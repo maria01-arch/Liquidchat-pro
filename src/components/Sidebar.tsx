@@ -1,0 +1,541 @@
+import React, { useState, useEffect, useRef } from 'react';
+import {
+  MessageSquare,
+  Users,
+  HardDrive,
+  Bot,
+  Settings,
+  Plus,
+  Search,
+  Lock,
+  Timer,
+  Pin,
+  UserPlus,
+  Menu,
+  X,
+  Bell,
+  Key,
+  Sun,
+  Moon,
+  Sparkles,
+  ShieldCheck,
+  ChevronRight,
+  PhoneCall,
+  Droplets,
+  Layers,
+  Radio
+} from 'lucide-react';
+import { LiquidNavBar } from './LiquidNavBar';
+import { ActiveTab, Chat, User } from '../types';
+
+interface SidebarProps {
+  activeTab: ActiveTab;
+  setActiveTab: (tab: ActiveTab) => void;
+  chats: Chat[];
+  activeChatId: string | null;
+  onSelectChat: (chatId: string) => void;
+  onOpenNewGroupModal: () => void;
+  onOpenNewDirectChatModal: () => void;
+  currentUser: User;
+  onOpenUserProfile: () => void;
+  onOpenPasskeyModal: () => void;
+  onOpenNotifications: () => void;
+  unreadNotifCount: number;
+  theme: 'dark' | 'light' | 'emerald';
+  setTheme: (theme: 'dark' | 'light' | 'emerald') => void;
+}
+
+export const Sidebar: React.FC<SidebarProps> = ({
+  activeTab,
+  setActiveTab,
+  chats,
+  activeChatId,
+  onSelectChat,
+  onOpenNewGroupModal,
+  onOpenNewDirectChatModal,
+  currentUser,
+  onOpenUserProfile,
+  onOpenPasskeyModal,
+  onOpenNotifications,
+  unreadNotifCount,
+  theme,
+  setTheme,
+}) => {
+  const [searchQuery, setSearchQuery] = useState('');
+  const [filter, setFilter] = useState<'all' | 'unread' | 'rooms' | 'direct' | 'ai'>('all');
+  const [menuOpen, setMenuOpen] = useState(false);
+  const [showFabMenu, setShowFabMenu] = useState(false);
+
+  // Scroll detection for vanishing glass bottom bar
+  const [isNavVisible, setIsNavVisible] = useState(true);
+  const lastScrollY = useRef(0);
+  const scrollContainerRef = useRef<HTMLDivElement | null>(null);
+
+  const handleScroll = () => {
+    if (!scrollContainerRef.current) return;
+    const currentScrollY = scrollContainerRef.current.scrollTop;
+    if (currentScrollY > lastScrollY.current && currentScrollY > 50) {
+      // Scrolling down -> vanish bottom bar
+      setIsNavVisible(false);
+    } else if (currentScrollY < lastScrollY.current) {
+      // Scrolling up -> appear back
+      setIsNavVisible(true);
+    }
+    lastScrollY.current = currentScrollY;
+  };
+
+  const filteredChats = chats.filter((chat) => {
+    const chatName = chat.name || '';
+    const lastMsg = chat.lastMessage || '';
+    const query = searchQuery || '';
+    const matchesSearch =
+      chatName.toLowerCase().includes(query.toLowerCase()) ||
+      lastMsg.toLowerCase().includes(query.toLowerCase());
+
+    if (!matchesSearch) return false;
+
+    if (filter === 'unread') return chat.unreadCount > 0;
+    if (filter === 'rooms') return chat.type === 'group';
+    if (filter === 'direct') return chat.type === 'direct';
+    if (filter === 'ai') return chat.type === 'ai';
+    return true;
+  });
+
+  const handleSelectNav = (tab: ActiveTab) => {
+    setActiveTab(tab);
+    setMenuOpen(false);
+  };
+
+  // Get dynamic header title & icon based on active page
+  const getHeaderInfo = () => {
+    switch (activeTab) {
+      case 'chats':
+        return {
+          title: 'LIQUIDCHAT',
+          subtitle: 'E2EE Messenger',
+          icon: Droplets,
+          isAppLogo: true,
+        };
+      case 'rooms':
+        return {
+          title: 'Rooms & Channels',
+          subtitle: 'E2EE Communities',
+          icon: Users,
+          isAppLogo: false,
+        };
+      case 'calls':
+        return {
+          title: 'Call History',
+          subtitle: 'Voice & Video Log',
+          icon: PhoneCall,
+          isAppLogo: false,
+        };
+      case 'settings':
+        return {
+          title: 'App Settings',
+          subtitle: 'Privacy & Preferences',
+          icon: Settings,
+          isAppLogo: false,
+        };
+      case 'vault':
+        return {
+          title: 'Liquid Storage Vault',
+          subtitle: 'Zero-Knowledge Drive',
+          icon: HardDrive,
+          isAppLogo: false,
+        };
+      case 'ai':
+        return {
+          title: 'xchord AI Hub',
+          subtitle: 'Intelligent Assistant',
+          icon: Bot,
+          isAppLogo: false,
+        };
+      case 'contacts':
+        return {
+          title: 'Contacts Directory',
+          subtitle: 'Verified Identity Keys',
+          icon: Users,
+          isAppLogo: false,
+        };
+      default:
+        return {
+          title: 'LIQUIDCHAT',
+          subtitle: 'E2EE Messenger',
+          icon: Droplets,
+          isAppLogo: true,
+        };
+    }
+  };
+
+  const headerInfo = getHeaderInfo();
+  const HeaderIcon = headerInfo.icon;
+
+  return (
+    <aside className="w-full h-full border-r border-gray-200 dark:border-slate-800 bg-white dark:bg-slate-900 flex flex-col shrink-0 select-none relative overflow-hidden">
+      {/* Dynamic Top Header Bar */}
+      <div className="p-3.5 border-b border-gray-200 dark:border-slate-800 flex items-center justify-between bg-white/90 dark:bg-slate-900/90 backdrop-blur-md z-30">
+        <div className="flex items-center space-x-3">
+          {/* Logo or Page Icon */}
+          <div className="w-9 h-9 rounded-2xl bg-gradient-to-tr from-blue-600 via-indigo-600 to-cyan-500 p-0.5 shadow-md flex items-center justify-center shrink-0">
+            <div className="w-full h-full bg-slate-950 rounded-[14px] flex items-center justify-center">
+              <HeaderIcon className="w-5 h-5 text-cyan-400" />
+            </div>
+          </div>
+
+          <div>
+            <h1 className="font-extrabold text-sm tracking-tight text-gray-900 dark:text-slate-100 flex items-center space-x-1.5">
+              <span>{headerInfo.title}</span>
+              {headerInfo.isAppLogo && (
+                <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+              )}
+            </h1>
+            <p className="text-[10px] text-gray-400 dark:text-slate-400 font-medium">
+              {headerInfo.subtitle}
+            </p>
+          </div>
+        </div>
+
+        {/* Top Right Profile & Menu Trigger */}
+        <div className="flex items-center space-x-2">
+          {/* Notifications Trigger */}
+          <button
+            onClick={onOpenNotifications}
+            className="p-2 rounded-2xl bg-gray-100 dark:bg-slate-800 hover:bg-gray-200 dark:hover:bg-slate-700 text-gray-700 dark:text-slate-300 relative transition-colors"
+            title="Notifications"
+          >
+            <Bell className="w-4 h-4 text-blue-500" />
+            {unreadNotifCount > 0 && (
+              <span className="absolute -top-1 -right-1 w-4 h-4 rounded-full bg-rose-500 text-white font-bold text-[9px] flex items-center justify-center">
+                {unreadNotifCount}
+              </span>
+            )}
+          </button>
+
+          {/* User Profile Avatar */}
+          <button
+            onClick={onOpenUserProfile}
+            className="relative p-0.5 rounded-2xl hover:ring-2 ring-blue-500/50 transition-all"
+            title="User Profile"
+          >
+            <img
+              src={currentUser.avatar}
+              alt={currentUser.username}
+              className="w-8 h-8 rounded-xl object-cover ring-1 ring-gray-200 dark:ring-slate-700"
+            />
+          </button>
+
+          {/* Menu Drawer Toggle */}
+          <button
+            onClick={() => setMenuOpen(!menuOpen)}
+            className={`p-2 rounded-2xl transition-colors ${
+              menuOpen
+                ? 'bg-blue-600 text-white'
+                : 'bg-gray-100 dark:bg-slate-800 hover:bg-gray-200 dark:hover:bg-slate-700 text-gray-700 dark:text-slate-200'
+            }`}
+            title="Menu Drawer"
+          >
+            {menuOpen ? <X className="w-4 h-4" /> : <Menu className="w-4 h-4" />}
+          </button>
+        </div>
+      </div>
+
+      {/* Slide-over Clean Menu Drawer */}
+      {menuOpen && (
+        <div className="absolute inset-x-0 top-[65px] bottom-0 bg-white/95 dark:bg-slate-900/95 backdrop-blur-md z-40 p-4 flex flex-col justify-between overflow-y-auto border-b border-gray-200 dark:border-slate-800 shadow-xl animate-in fade-in zoom-in-95 duration-200">
+          <div className="space-y-4">
+            {/* User Profile Card */}
+            <div
+              onClick={() => {
+                onOpenUserProfile();
+                setMenuOpen(false);
+              }}
+              className="p-3.5 bg-blue-50 dark:bg-blue-950/40 border border-blue-200 dark:border-blue-900/50 rounded-2xl flex items-center justify-between cursor-pointer hover:bg-blue-100/60 dark:hover:bg-blue-900/40 transition-colors"
+            >
+              <div className="flex items-center space-x-3">
+                <img
+                  src={currentUser.avatar}
+                  alt={currentUser.username}
+                  className="w-10 h-10 rounded-2xl object-cover ring-2 ring-blue-500"
+                />
+                <div>
+                  <h4 className="font-bold text-sm text-gray-900 dark:text-slate-100">
+                    {currentUser.username}
+                  </h4>
+                  <p className="text-xs text-blue-600 dark:text-blue-400 font-medium">
+                    {currentUser.customStatus || 'Available for E2EE chat'}
+                  </p>
+                </div>
+              </div>
+              <div className="flex items-center space-x-1 text-xs font-bold text-blue-600 dark:text-blue-400">
+                <span>Profile</span>
+                <ChevronRight className="w-4 h-4" />
+              </div>
+            </div>
+
+            {/* Navigation Drawer List */}
+            <div className="space-y-1">
+              <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wider px-2 mb-1">
+                All Modules
+              </p>
+              {[
+                { key: 'chats', label: 'Chats & Messages', icon: MessageSquare, badge: chats.filter((c) => c.unreadCount > 0).length },
+                { key: 'rooms', label: 'Rooms & Channels', icon: Users },
+                { key: 'calls', label: 'E2EE Calls', icon: PhoneCall },
+                { key: 'vault', label: 'Liquid Storage Vault', icon: HardDrive },
+                { key: 'ai', label: 'xchord AI Assistant', icon: Bot },
+                { key: 'contacts', label: 'Contacts Directory', icon: Users },
+                { key: 'settings', label: 'App Settings', icon: Settings },
+              ].map((item) => {
+                const Icon = item.icon;
+                const isActive = activeTab === item.key;
+                return (
+                  <button
+                    key={item.key}
+                    onClick={() => handleSelectNav(item.key as ActiveTab)}
+                    className={`w-full p-2.5 rounded-xl flex items-center justify-between font-bold text-xs transition-colors ${
+                      isActive
+                        ? 'bg-blue-600 text-white shadow-xs'
+                        : 'text-gray-700 dark:text-slate-200 hover:bg-gray-100 dark:hover:bg-slate-800'
+                    }`}
+                  >
+                    <div className="flex items-center space-x-2.5">
+                      <Icon className="w-4 h-4" />
+                      <span>{item.label}</span>
+                    </div>
+                    {item.badge && item.badge > 0 ? (
+                      <span className="bg-rose-500 text-white font-bold text-[10px] px-2 py-0.5 rounded-full">
+                        {item.badge}
+                      </span>
+                    ) : null}
+                  </button>
+                );
+              })}
+            </div>
+
+            {/* Passkey & Security */}
+            <div className="space-y-1 pt-2 border-t border-gray-200 dark:border-slate-800">
+              <button
+                onClick={() => {
+                  onOpenPasskeyModal();
+                  setMenuOpen(false);
+                }}
+                className="w-full p-2.5 rounded-xl flex items-center justify-between text-xs font-bold text-gray-700 dark:text-slate-200 hover:bg-gray-100 dark:hover:bg-slate-800 transition-colors"
+              >
+                <div className="flex items-center space-x-2.5">
+                  <Key className="w-4 h-4 text-blue-600" />
+                  <span>Recovery Passkey</span>
+                </div>
+                <span className="text-[10px] text-gray-400 font-mono">12 WORDS</span>
+              </button>
+
+              {/* Theme Selector */}
+              <div className="p-2.5 rounded-xl flex items-center justify-between text-xs font-bold text-gray-700 dark:text-slate-200">
+                <div className="flex items-center space-x-2.5">
+                  <Sun className="w-4 h-4 text-blue-600" />
+                  <span>Theme</span>
+                </div>
+                <div className="flex items-center bg-gray-100 dark:bg-slate-800 p-0.5 rounded-xl border border-gray-200 dark:border-slate-700">
+                  <button
+                    onClick={() => setTheme('light')}
+                    className={`p-1 rounded-lg transition-colors ${
+                      theme === 'light' ? 'bg-white text-blue-600 shadow-xs' : 'text-gray-500 dark:text-slate-400'
+                    }`}
+                  >
+                    <Sun className="w-3.5 h-3.5" />
+                  </button>
+                  <button
+                    onClick={() => setTheme('dark')}
+                    className={`p-1 rounded-lg transition-colors ${
+                      theme === 'dark' ? 'bg-slate-700 text-white shadow-xs' : 'text-gray-500 dark:text-slate-400'
+                    }`}
+                  >
+                    <Moon className="w-3.5 h-3.5" />
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div className="p-3 bg-gray-50 dark:bg-slate-950/80 rounded-2xl border border-gray-200 dark:border-slate-800 text-[11px] text-gray-500 dark:text-slate-400 flex items-center justify-between">
+            <span className="flex items-center space-x-1.5 font-semibold text-blue-600 dark:text-blue-400">
+              <ShieldCheck className="w-4 h-4" />
+              <span>Zero-Knowledge E2EE</span>
+            </span>
+          </div>
+        </div>
+      )}
+
+      {/* Main Chats & Conversation List Content area */}
+      <div className="flex-1 flex flex-col min-h-0 relative">
+          {/* Search & Filter Header */}
+          <div className="p-3 border-b border-gray-200 dark:border-slate-800 space-y-2.5 bg-white dark:bg-slate-900">
+            <div className="relative">
+              <Search className="w-4 h-4 absolute left-3 top-2.5 text-gray-400" />
+              <input
+                type="text"
+                placeholder="Search messages or contacts..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="w-full pl-9 pr-3 py-1.5 bg-gray-100 dark:bg-slate-950 border border-gray-200 dark:border-slate-800 rounded-xl text-xs text-gray-900 dark:text-slate-100 placeholder-gray-400 focus:outline-none focus:border-blue-500 focus:bg-white transition-all"
+              />
+            </div>
+
+            {/* Filter Pills */}
+            <div className="flex items-center space-x-1 overflow-x-auto pb-1 no-scrollbar text-[11px]">
+              {(['all', 'unread', 'rooms', 'direct', 'ai'] as const).map((f) => (
+                <button
+                  key={f}
+                  onClick={() => setFilter(f)}
+                  className={`px-2.5 py-1 rounded-lg capitalize font-semibold whitespace-nowrap transition-colors ${
+                    filter === f
+                      ? 'bg-blue-600 text-white shadow-xs'
+                      : 'bg-gray-100 dark:bg-slate-800 text-gray-600 dark:text-slate-400 hover:bg-gray-200 dark:hover:bg-slate-700'
+                  }`}
+                >
+                  {f === 'rooms' ? 'Rooms' : f === 'ai' ? 'AI Hub' : f}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Chat List Scroll Container */}
+          <div
+            ref={scrollContainerRef}
+            onScroll={handleScroll}
+            className="flex-1 overflow-y-auto divide-y divide-gray-100 dark:divide-slate-800/40 p-2 space-y-1 pb-24"
+          >
+            {filteredChats.length === 0 ? (
+              <div className="p-8 text-center text-gray-400 text-xs">
+                No chats found matching filter.
+              </div>
+            ) : (
+              filteredChats.map((chat) => {
+                const isActive = chat.id === activeChatId;
+
+                return (
+                  <button
+                    key={chat.id}
+                    onClick={() => onSelectChat(chat.id)}
+                    className={`w-full p-3 rounded-2xl flex items-start space-x-3 text-left transition-all ${
+                      isActive
+                        ? 'bg-blue-50 dark:bg-blue-950/40 border-l-4 border-blue-600 shadow-xs'
+                        : 'hover:bg-gray-50 dark:hover:bg-slate-800/40 border border-transparent'
+                    }`}
+                  >
+                    {/* Avatar */}
+                    <div className="relative shrink-0">
+                      <img
+                        src={chat.avatar}
+                        alt={chat.name}
+                        className="w-11 h-11 rounded-2xl object-cover ring-1 ring-gray-200 dark:ring-slate-700"
+                      />
+                      {chat.type === 'ai' && (
+                        <div className="absolute -bottom-1 -right-1 bg-blue-600 p-0.5 rounded-full text-white shadow">
+                          <Bot className="w-3 h-3" />
+                        </div>
+                      )}
+                      {chat.type === 'group' && (
+                        <div className="absolute -bottom-1 -right-1 bg-emerald-500 p-0.5 rounded-full text-white shadow">
+                          <Users className="w-3 h-3" />
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Meta & Info */}
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center justify-between mb-0.5">
+                        <div className="flex items-center space-x-1.5 min-w-0">
+                          {chat.isPinned && <Pin className="w-3 h-3 text-amber-500 shrink-0" />}
+                          <span className="font-bold text-xs text-gray-900 dark:text-slate-100 truncate">
+                            {chat.name}
+                          </span>
+                        </div>
+                        <span className="text-[10px] text-gray-400 dark:text-slate-400 shrink-0">
+                          {chat.lastMessageTime}
+                        </span>
+                      </div>
+
+                      {/* Message Preview */}
+                      <p className="text-xs text-gray-500 dark:text-slate-400 truncate mb-1">
+                        {chat.lastMessage || 'No messages yet'}
+                      </p>
+
+                      {/* Badges */}
+                      <div className="flex items-center space-x-2 text-[10px]">
+                        <span className="flex items-center space-x-0.5 text-blue-600 dark:text-blue-400 font-medium">
+                          <Lock className="w-2.5 h-2.5" />
+                          <span>E2EE</span>
+                        </span>
+
+                        {chat.selfDestructTimer > 0 && (
+                          <span className="flex items-center space-x-0.5 text-amber-600 dark:text-amber-400 font-mono">
+                            <Timer className="w-2.5 h-2.5" />
+                            <span>{chat.selfDestructTimer}s</span>
+                          </span>
+                        )}
+
+                        {chat.unreadCount > 0 && (
+                          <span className="ml-auto bg-blue-600 text-white font-bold px-2 py-0.2 rounded-full text-[10px]">
+                            {chat.unreadCount}
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                  </button>
+                );
+              })
+            )}
+          </div>
+
+          {/* Floating Plus Action Button (FAB) */}
+          <div className="absolute bottom-20 right-4 z-30">
+            {showFabMenu && (
+              <div className="mb-2 space-y-2 flex flex-col items-end animate-in fade-in slide-in-from-bottom-2 duration-200">
+                <button
+                  onClick={() => {
+                    setShowFabMenu(false);
+                    onOpenNewDirectChatModal();
+                  }}
+                  className="px-4 py-2 bg-white dark:bg-slate-800 text-gray-900 dark:text-slate-100 font-bold text-xs rounded-2xl shadow-xl border border-gray-200 dark:border-slate-700 flex items-center space-x-2 hover:bg-gray-100"
+                >
+                  <UserPlus className="w-4 h-4 text-blue-500" />
+                  <span>New Direct Chat</span>
+                </button>
+                <button
+                  onClick={() => {
+                    setShowFabMenu(false);
+                    onOpenNewGroupModal();
+                  }}
+                  className="px-4 py-2 bg-white dark:bg-slate-800 text-gray-900 dark:text-slate-100 font-bold text-xs rounded-2xl shadow-xl border border-gray-200 dark:border-slate-700 flex items-center space-x-2 hover:bg-gray-100"
+                >
+                  <Users className="w-4 h-4 text-emerald-500" />
+                  <span>Create Room</span>
+                </button>
+              </div>
+            )}
+            <button
+              onClick={() => setShowFabMenu(!showFabMenu)}
+              className="w-12 h-12 rounded-full bg-blue-600 hover:bg-blue-700 text-white shadow-2xl flex items-center justify-center transition-transform active:scale-95 ring-4 ring-blue-500/30"
+              title="Add New Chat or Room"
+            >
+              <Plus className={`w-6 h-6 transition-transform ${showFabMenu ? 'rotate-45' : ''}`} />
+            </button>
+          </div>
+        </div>
+
+      {/* Liquid Glass Bottom Navigation Bar */}
+      <div
+        className={`absolute bottom-0 inset-x-0 z-30 transition-transform duration-300 ${
+          isNavVisible ? 'translate-y-0 opacity-100' : 'translate-y-full opacity-0 pointer-events-none'
+        }`}
+      >
+        <LiquidNavBar
+          activeTab={activeTab}
+          setActiveTab={setActiveTab}
+          unreadChatsCount={chats.filter((c) => c.unreadCount > 0).length}
+        />
+      </div>
+    </aside>
+  );
+};

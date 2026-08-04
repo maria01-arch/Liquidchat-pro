@@ -1,0 +1,6 @@
+{
+  "name": "liquidchat",
+  "description": "WhatsApp & Telegram hybrid messaging platform with E2EE, self-destructing messages, cloud file storage, voice notes, and xchord AI by xchordlabs corp.",
+  "requestFramePermissions": ["microphone", "camera"],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
