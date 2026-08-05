@@ -36,10 +36,10 @@ export const PageHeader: React.FC<PageHeaderProps> = ({
         {onBackToChats && (
           <button
             onClick={onBackToChats}
-            className="p-1.5 rounded-xl text-gray-500 dark:text-slate-400 hover:text-gray-900 dark:hover:text-slate-100 hover:bg-gray-100 dark:hover:bg-slate-800 transition-colors md:hidden shrink-0"
-            title="Back to Chats"
+            className="p-2 rounded-xl bg-gray-100 dark:bg-slate-800 hover:bg-gray-200 dark:hover:bg-slate-700 text-gray-700 dark:text-slate-200 transition-colors shrink-0 shadow-xs active:scale-95"
+            title="Go Back"
           >
-            <ArrowLeft className="w-5 h-5" />
+            <ArrowLeft className="w-4 h-4 text-blue-500" />
           </button>
         )}
 

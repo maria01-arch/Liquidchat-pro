@@ -23,8 +23,10 @@ import {
   PhoneCall,
   Droplets,
   Layers,
-  Radio
+  Radio,
+  ArrowLeft
 } from 'lucide-react';
+import { motion, AnimatePresence } from 'motion/react';
 import { LiquidNavBar } from './LiquidNavBar';
 import { ActiveTab, Chat, User } from '../types';
 
@@ -43,6 +45,8 @@ interface SidebarProps {
   unreadNotifCount: number;
   theme: 'dark' | 'light' | 'emerald';
   setTheme: (theme: 'dark' | 'light' | 'emerald') => void;
+  onGoBack?: () => void;
+  canGoBack?: boolean;
 }
 
 export const Sidebar: React.FC<SidebarProps> = ({
@@ -60,9 +64,13 @@ export const Sidebar: React.FC<SidebarProps> = ({
   unreadNotifCount,
   theme,
   setTheme,
+  onGoBack,
+  canGoBack,
 }) => {
   const [searchQuery, setSearchQuery] = useState('');
   const [filter, setFilter] = useState<'all' | 'unread' | 'rooms' | 'direct' | 'ai'>('all');
+  const [isSearchExpanded, setIsSearchExpanded] = useState(false);
+  const [isPillsScrolled, setIsPillsScrolled] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
   const [showFabMenu, setShowFabMenu] = useState(false);
 
@@ -175,7 +183,17 @@ export const Sidebar: React.FC<SidebarProps> = ({
     <aside className="w-full h-full border-r border-gray-200 dark:border-slate-800 bg-white dark:bg-slate-900 flex flex-col shrink-0 select-none relative overflow-hidden">
       {/* Dynamic Top Header Bar */}
       <div className="p-3.5 border-b border-gray-200 dark:border-slate-800 flex items-center justify-between bg-white/90 dark:bg-slate-900/90 backdrop-blur-md z-30">
-        <div className="flex items-center space-x-3">
+        <div className="flex items-center space-x-2.5">
+          {onGoBack && canGoBack && (
+            <button
+              onClick={onGoBack}
+              className="p-2 rounded-xl bg-gray-100 dark:bg-slate-800 hover:bg-gray-200 dark:hover:bg-slate-700 text-gray-700 dark:text-slate-200 transition-colors shrink-0 shadow-xs active:scale-95"
+              title="Go Back"
+            >
+              <ArrowLeft className="w-4 h-4 text-blue-500" />
+            </button>
+          )}
+
           {/* Logo or Page Icon */}
           <div className="w-9 h-9 rounded-2xl bg-gradient-to-tr from-blue-600 via-indigo-600 to-cyan-500 p-0.5 shadow-md flex items-center justify-center shrink-0">
             <div className="w-full h-full bg-slate-950 rounded-[14px] flex items-center justify-center">
@@ -368,35 +386,100 @@ export const Sidebar: React.FC<SidebarProps> = ({
 
       {/* Main Chats & Conversation List Content area */}
       <div className="flex-1 flex flex-col min-h-0 relative">
-          {/* Search & Filter Header */}
-          <div className="p-3 border-b border-gray-200 dark:border-slate-800 space-y-2.5 bg-white dark:bg-slate-900">
-            <div className="relative">
-              <Search className="w-4 h-4 absolute left-3 top-2.5 text-gray-400" />
-              <input
-                type="text"
-                placeholder="Search messages or contacts..."
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                className="w-full pl-9 pr-3 py-1.5 bg-gray-100 dark:bg-slate-950 border border-gray-200 dark:border-slate-800 rounded-xl text-xs text-gray-900 dark:text-slate-100 placeholder-gray-400 focus:outline-none focus:border-blue-500 focus:bg-white transition-all"
-              />
-            </div>
-
-            {/* Filter Pills */}
-            <div className="flex items-center space-x-1 overflow-x-auto pb-1 no-scrollbar text-[11px]">
-              {(['all', 'unread', 'rooms', 'direct', 'ai'] as const).map((f) => (
-                <button
-                  key={f}
-                  onClick={() => setFilter(f)}
-                  className={`px-2.5 py-1 rounded-lg capitalize font-semibold whitespace-nowrap transition-colors ${
-                    filter === f
-                      ? 'bg-blue-600 text-white shadow-xs'
-                      : 'bg-gray-100 dark:bg-slate-800 text-gray-600 dark:text-slate-400 hover:bg-gray-200 dark:hover:bg-slate-700'
-                  }`}
+          {/* Search & Filter Header with Takeover Animation */}
+          <div
+            className={`p-3 transition-colors bg-white dark:bg-slate-900 min-h-[58px] flex items-center border-b ${
+              isPillsScrolled ? 'border-gray-200 dark:border-slate-800' : 'border-transparent'
+            }`}
+          >
+            <AnimatePresence mode="wait">
+              {isSearchExpanded ? (
+                <motion.div
+                  key="search-input-active"
+                  initial={{ opacity: 0, x: 20 }}
+                  animate={{ opacity: 1, x: 0 }}
+                  exit={{ opacity: 0, x: -20 }}
+                  transition={{ duration: 0.2 }}
+                  className="w-full flex items-center space-x-2 bg-gray-100 dark:bg-slate-950 border border-blue-500/50 rounded-full px-3.5 py-2 shadow-inner"
                 >
-                  {f === 'rooms' ? 'Rooms' : f === 'ai' ? 'AI Hub' : f}
-                </button>
-              ))}
-            </div>
+                  <Search className="w-4 h-4 text-blue-500 shrink-0" />
+                  <input
+                    type="text"
+                    autoFocus
+                    placeholder="Search messages, rooms or contacts..."
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                    className="w-full bg-transparent text-xs font-medium text-gray-900 dark:text-slate-100 placeholder-gray-400 focus:outline-none"
+                  />
+                  {searchQuery && (
+                    <button
+                      onClick={() => setSearchQuery('')}
+                      className="text-gray-400 hover:text-gray-600 dark:hover:text-slate-200 text-xs font-bold px-1"
+                    >
+                      Clear
+                    </button>
+                  )}
+                  <button
+                    onClick={() => {
+                      setSearchQuery('');
+                      setIsSearchExpanded(false);
+                    }}
+                    className="p-1 rounded-full bg-gray-200 dark:bg-slate-800 hover:bg-gray-300 dark:hover:bg-slate-700 text-gray-600 dark:text-slate-300 transition-colors shrink-0"
+                    title="Close Search"
+                  >
+                    <X className="w-4 h-4" />
+                  </button>
+                </motion.div>
+              ) : (
+                <motion.div
+                  key="filter-pills-bar"
+                  initial={{ opacity: 0, x: -20 }}
+                  animate={{ opacity: 1, x: 0 }}
+                  exit={{ opacity: 0, x: 20 }}
+                  transition={{ duration: 0.2 }}
+                  onScroll={(e) => setIsPillsScrolled(e.currentTarget.scrollLeft > 2)}
+                  className="w-full flex items-center space-x-2.5 overflow-x-auto no-scrollbar py-0.5"
+                >
+                  {/* Search Button that animates to take over */}
+                  <button
+                    onClick={() => setIsSearchExpanded(true)}
+                    className="p-2.5 rounded-full bg-blue-50 dark:bg-blue-950/60 hover:bg-blue-100 dark:hover:bg-blue-900/80 text-blue-600 dark:text-blue-400 border border-blue-200 dark:border-blue-800/60 transition-all shadow-xs shrink-0 flex items-center justify-center active:scale-95"
+                    title="Open Search"
+                  >
+                    <Search className="w-4 h-4" />
+                  </button>
+
+                  {/* Big Comfortable Filter Pills */}
+                  {(['all', 'unread', 'rooms', 'direct', 'ai'] as const).map((f) => {
+                    const isSelected = filter === f;
+                    const label =
+                      f === 'all'
+                        ? 'All'
+                        : f === 'unread'
+                        ? 'Unread'
+                        : f === 'rooms'
+                        ? 'Rooms'
+                        : f === 'direct'
+                        ? 'Direct'
+                        : 'AI Hub';
+
+                    return (
+                      <button
+                        key={f}
+                        onClick={() => setFilter(f)}
+                        className={`px-4 py-2 rounded-full text-xs font-bold whitespace-nowrap transition-all cursor-pointer shadow-xs active:scale-95 shrink-0 ${
+                          isSelected
+                            ? 'bg-blue-600 text-white ring-2 ring-blue-500/30 shadow-md'
+                            : 'bg-gray-100 dark:bg-slate-800/90 text-gray-700 dark:text-slate-300 hover:bg-gray-200 dark:hover:bg-slate-700 border border-gray-200/80 dark:border-slate-700/80'
+                        }`}
+                      >
+                        {label}
+                      </button>
+                    );
+                  })}
+                </motion.div>
+              )}
+            </AnimatePresence>
           </div>
 
           {/* Chat List Scroll Container */}

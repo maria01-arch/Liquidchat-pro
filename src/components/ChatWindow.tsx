@@ -474,101 +474,99 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
         </div>
       )}
 
-      {/* Message List Canvas with Telegram Wallpaper */}
-      <div
-        className={`flex-1 overflow-y-auto p-4 space-y-3 relative ${
-          currentWp === 'telegram-light-doodle' || currentWp === 'clean-solid'
-            ? 'bg-[#e6eef6] text-slate-900'
-            : currentWp === 'telegram-doodle'
-            ? 'bg-[#0e1621] text-slate-100'
-            : currentWp === 'purple-nebula'
-            ? 'bg-gradient-to-br from-slate-950 via-purple-950 to-indigo-950 text-slate-100'
-            : currentWp === 'midnight-blue'
-            ? 'bg-gradient-to-br from-slate-950 via-slate-900 to-blue-950 text-slate-100'
-            : currentWp === 'emerald-forest'
-            ? 'bg-gradient-to-br from-slate-950 via-teal-950 to-emerald-950 text-slate-100'
-            : 'bg-[#0f172a] text-slate-100'
-        }`}
-      >
-        {/* Custom Uploaded Image / Photo Gallery Wallpaper Background */}
-        {currentWp.startsWith('data:image/') || currentWp.startsWith('http') || currentWp.startsWith('blob:') ? (
-          <div
-            className="absolute inset-0 bg-cover bg-center z-0 pointer-events-none"
-            style={{ backgroundImage: `url("${currentWp}")` }}
-          >
-            <div className="absolute inset-0 bg-slate-950/25 backdrop-blur-[0.5px]" />
-          </div>
-        ) : (
-          <>
-            {/* Telegram Vector Pattern Overlay */}
-            {(currentWp === 'telegram-doodle' || currentWp === 'telegram-light-doodle' || currentWp === 'dark-doodle') && (
-              <div
-                className={`absolute inset-0 pointer-events-none bg-repeat z-0 ${
-                  currentWp === 'telegram-light-doodle' ? 'opacity-20' : 'opacity-15'
-                }`}
-                style={{
-                  backgroundImage: `url("data:image/svg+xml,%3Csvg width='120' height='120' viewBox='0 0 120 120' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='none' stroke='%23ffffff' stroke-width='1.2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M20 20 a 8 8 0 1 0 0.1 0' /%3E%3Cpath d='M45 15 l 10 10 m -10 0 l 10 -10' /%3E%3Cpath d='M80 25 q 10 -15 20 0 t -20 0' /%3E%3Cpath d='M15 75 c 5 -10 15 -10 20 0 c -5 10 -15 10 -20 0' /%3E%3Cpath d='M50 80 a 10 10 0 1 1 0.1 0' /%3E%3Cpath d='M85 75 l 8 -8 l 8 8 l -8 8 z' /%3E%3Cpath d='M30 45 h 15 v 10 h -15 z' /%3E%3Cpath d='M70 45 c 0 -8 12 -8 12 0 c 0 8 -12 8 -12 0' /%3E%3Cpath d='M100 95 a 6 6 0 1 0 0.1 0' /%3E%3C/g%3E%3C/svg%3E")`,
-                }}
-              />
-            )}
-          </>
-        )}
-
-        {/* Date Capsule Badge matching Telegram style */}
-        <div className="text-center my-2 relative z-10">
-          <span className="inline-block px-3.5 py-1 rounded-full bg-slate-900/80 text-slate-200 font-medium text-[11px] border border-slate-700/50 shadow-md backdrop-blur-md">
-            August 4
-          </span>
-        </div>
-
-        {/* E2EE Security Badge */}
-        <div className="text-center my-1 relative z-10">
-          <span className="inline-flex items-center space-x-1.5 px-3 py-1 rounded-full bg-slate-900/80 border border-slate-800 text-[10px] text-cyan-400 font-mono shadow-xs backdrop-blur-md">
-            <Lock className="w-3 h-3 text-cyan-400" />
-            <span>End-to-End Encrypted Channel</span>
-          </span>
-        </div>
-
-        {/* Messages List */}
-        <AnimatePresence initial={false}>
-          {messages.map((msg) => {
-            const isMe = msg.senderId === currentUser.id;
-            const decryptedContent = decryptE2EEMessage(msg.content);
-
-            return (
-              <motion.div
-                key={msg.id}
-                initial={{ opacity: 0, y: 8, scale: 0.98 }}
-                animate={{ opacity: 1, y: 0, scale: 1 }}
-                exit={{ opacity: 0, scale: 0.8, filter: 'blur(10px)' }}
-                transition={{ duration: 0.18 }}
-                className={`flex items-end space-x-2 group relative z-10 ${
-                  isMe ? 'flex-row-reverse space-x-reverse' : 'flex-row'
-                }`}
-              >
-                {/* Sender Avatar */}
-                <img
-                  src={msg.senderAvatar}
-                  alt={msg.senderName}
-                  className="w-7 h-7 rounded-full object-cover shrink-0 mb-1 ring-1 ring-slate-800 shadow-xs"
+      {/* Middle Canvas Container with Fixed Continuous Wallpaper Background */}
+      <div className="relative flex-1 min-h-0 flex flex-col overflow-hidden">
+        {/* Fixed Background Wallpaper Layer (Does not cut or jump when scrolling) */}
+        <div
+          className={`absolute inset-0 z-0 ${
+            currentWp === 'telegram-light-doodle' || currentWp === 'clean-solid'
+              ? 'bg-[#e6eef6] text-slate-900'
+              : currentWp === 'telegram-doodle'
+              ? 'bg-[#0e1621] text-slate-100'
+              : currentWp === 'purple-nebula'
+              ? 'bg-gradient-to-br from-slate-950 via-purple-950 to-indigo-950 text-slate-100'
+              : currentWp === 'midnight-blue'
+              ? 'bg-gradient-to-br from-slate-950 via-slate-900 to-blue-950 text-slate-100'
+              : currentWp === 'emerald-forest'
+              ? 'bg-gradient-to-br from-slate-950 via-teal-950 to-emerald-950 text-slate-100'
+              : 'bg-[#0f172a] text-slate-100'
+          }`}
+        >
+          {/* Custom Uploaded Image / Photo Gallery Wallpaper Background */}
+          {currentWp.startsWith('data:image/') || currentWp.startsWith('http') || currentWp.startsWith('blob:') ? (
+            <div
+              className="absolute inset-0 bg-cover bg-center z-0 pointer-events-none"
+              style={{ backgroundImage: `url("${currentWp}")` }}
+            >
+              <div className="absolute inset-0 bg-slate-950/25 backdrop-blur-[0.5px]" />
+            </div>
+          ) : (
+            <>
+              {/* Telegram Vector Pattern Overlay */}
+              {(currentWp === 'telegram-doodle' || currentWp === 'telegram-light-doodle' || currentWp === 'dark-doodle') && (
+                <div
+                  className={`absolute inset-0 pointer-events-none bg-repeat z-0 ${
+                    currentWp === 'telegram-light-doodle' ? 'opacity-20' : 'opacity-15'
+                  }`}
+                  style={{
+                    backgroundImage: `url("data:image/svg+xml,%3Csvg width='120' height='120' viewBox='0 0 120 120' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='none' stroke='%23ffffff' stroke-width='1.2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M20 20 a 8 8 0 1 0 0.1 0' /%3E%3Cpath d='M45 15 l 10 10 m -10 0 l 10 -10' /%3E%3Cpath d='M80 25 q 10 -15 20 0 t -20 0' /%3E%3Cpath d='M15 75 c 5 -10 15 -10 20 0 c -5 10 -15 10 -20 0' /%3E%3Cpath d='M50 80 a 10 10 0 1 1 0.1 0' /%3E%3Cpath d='M85 75 l 8 -8 l 8 8 l -8 8 z' /%3E%3Cpath d='M30 45 h 15 v 10 h -15 z' /%3E%3Cpath d='M70 45 c 0 -8 12 -8 12 0 c 0 8 -12 8 -12 0' /%3E%3Cpath d='M100 95 a 6 6 0 1 0 0.1 0' /%3E%3C/g%3E%3C/svg%3E")`,
+                  }}
                 />
+              )}
+            </>
+          )}
+        </div>
 
-                <div className={`max-w-[85%] sm:max-w-[70%] space-y-1 ${isMe ? 'items-end' : 'items-start'}`}>
-                  {/* Sender Name in group */}
-                  {!isMe && chat.type === 'group' && (
-                    <span className="text-[11px] font-bold text-sky-400 pl-1 block">
-                      {msg.senderName}
-                    </span>
-                  )}
+        {/* Scrollable Message List Canvas */}
+        <div className="flex-1 overflow-y-auto p-3 sm:p-4 space-y-1.5 relative z-10">
+          {/* Date Capsule Badge matching Telegram style */}
+          <div className="text-center my-1 relative z-10">
+            <span className="inline-block px-3.5 py-1 rounded-full bg-slate-900/80 text-slate-200 font-medium text-[11px] border border-slate-700/50 shadow-md backdrop-blur-md">
+              August 4
+            </span>
+          </div>
 
-                  {/* Telegram Style Message Bubble with Tail */}
-                  <div
-                    className={`px-3.5 py-2 relative shadow-md text-sm transition-all leading-relaxed ${
-                      isMe
-                        ? 'bg-[#2b5278] text-white rounded-[18px] rounded-br-[4px] after:content-[""] after:absolute after:bottom-0 after:-right-[5px] after:w-0 after:h-0 after:border-l-[7px] after:border-l-[#2b5278] after:border-b-[7px] after:border-b-transparent after:border-t-[7px] after:border-t-transparent'
-                        : 'bg-[#182533] text-slate-100 rounded-[18px] rounded-bl-[4px] border border-slate-700/50 after:content-[""] after:absolute after:bottom-0 after:-left-[5px] after:w-0 after:h-0 after:border-r-[7px] after:border-r-[#182533] after:border-b-[7px] after:border-b-transparent after:border-t-[7px] after:border-t-transparent'
-                    }`}
-                  >
+          {/* E2EE Security Badge */}
+          <div className="text-center my-1 relative z-10">
+            <span className="inline-flex items-center space-x-1.5 px-3 py-1 rounded-full bg-slate-900/80 border border-slate-800 text-[10px] text-cyan-400 font-mono shadow-xs backdrop-blur-md">
+              <Lock className="w-3 h-3 text-cyan-400" />
+              <span>End-to-End Encrypted Channel</span>
+            </span>
+          </div>
+
+          {/* Messages List with Compact Gaps and No Avatars beside bubbles */}
+          <AnimatePresence initial={false}>
+            {messages.map((msg) => {
+              const isMe = msg.senderId === currentUser.id;
+              const decryptedContent = decryptE2EEMessage(msg.content);
+
+              return (
+                <motion.div
+                  key={msg.id}
+                  initial={{ opacity: 0, y: 8, scale: 0.98 }}
+                  animate={{ opacity: 1, y: 0, scale: 1 }}
+                  exit={{ opacity: 0, scale: 0.8, filter: 'blur(10px)' }}
+                  transition={{ duration: 0.18 }}
+                  className={`flex items-end group relative z-10 ${
+                    isMe ? 'flex-row-reverse' : 'flex-row'
+                  }`}
+                >
+                  <div className={`max-w-[88%] sm:max-w-[78%] space-y-0.5 ${isMe ? 'items-end' : 'items-start'}`}>
+                    {/* Sender Name in group */}
+                    {!isMe && chat.type === 'group' && (
+                      <span className="text-[11px] font-bold text-sky-400 pl-1 block">
+                        {msg.senderName}
+                      </span>
+                    )}
+
+                    {/* Telegram Style Message Bubble with Tail */}
+                    <div
+                      className={`px-3.5 py-2 relative shadow-md text-sm transition-all leading-relaxed ${
+                        isMe
+                          ? 'bg-[#2b5278] text-white rounded-[18px] rounded-br-[4px] after:content-[""] after:absolute after:bottom-0 after:-right-[5px] after:w-0 after:h-0 after:border-l-[7px] after:border-l-[#2b5278] after:border-b-[7px] after:border-b-transparent after:border-t-[7px] after:border-t-transparent'
+                          : 'bg-[#182533] text-slate-100 rounded-[18px] rounded-bl-[4px] border border-slate-700/50 after:content-[""] after:absolute after:bottom-0 after:-left-[5px] after:w-0 after:h-0 after:border-r-[7px] after:border-r-[#182533] after:border-b-[7px] after:border-b-transparent after:border-t-[7px] after:border-t-transparent'
+                      }`}
+                    >
                     {/* Reply Context snippet */}
                     {msg.replyTo && (
                       <div
@@ -724,6 +722,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
         </AnimatePresence>
         <div ref={messagesEndRef} />
       </div>
+    </div>
 
       {/* Reply Banner */}
       {replyingTo && (
@@ -778,100 +777,115 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
       )}
 
       {/* Input Dock - Floating Telegram Pill Style matching uploaded screenshot 5 */}
-      <footer className="p-3 bg-slate-950/95 border-t border-slate-800/80 backdrop-blur-xl shrink-0 z-20">
-        <div className="flex items-center space-x-2 bg-slate-900/90 border border-slate-800 rounded-full px-3 py-1.5 shadow-2xl">
-          <input
-            type="file"
-            ref={fileInputRef}
-            onChange={handleImageUpload}
-            accept="image/*"
-            className="hidden"
-          />
+      {isBlocked ? (
+        <footer className="p-4 bg-slate-950/95 border-t border-slate-800/80 backdrop-blur-xl shrink-0 z-20 flex items-center justify-center">
+          <div className="flex items-center space-x-2.5 text-slate-300 text-xs font-medium bg-amber-500/10 border border-amber-500/20 px-4 py-2.5 rounded-full">
+            <Ban className="w-4 h-4 text-amber-400 shrink-0" />
+            <span>You have blocked this user. You cannot send messages.</span>
+            <button
+              onClick={() => setIsBlocked(false)}
+              className="text-sky-400 hover:text-sky-300 font-bold underline ml-1 cursor-pointer transition-colors"
+            >
+              Unblock
+            </button>
+          </div>
+        </footer>
+      ) : (
+        <footer className="p-3 bg-slate-950/95 border-t border-slate-800/80 backdrop-blur-xl shrink-0 z-20">
+          <div className="flex items-center space-x-2 bg-slate-900/90 border border-slate-800 rounded-full px-3 py-1.5 shadow-2xl">
+            <input
+              type="file"
+              ref={fileInputRef}
+              onChange={handleImageUpload}
+              accept="image/*"
+              className="hidden"
+            />
 
-          {/* Emoji Toggle Icon */}
-          <button
-            onClick={() => setInputText((prev) => prev + ' 😊')}
-            className="p-2 text-slate-400 hover:text-slate-200 transition-colors"
-            title="Emoji Picker"
-          >
-            <Smile className="w-5 h-5" />
-          </button>
+            {/* Emoji Toggle Icon */}
+            <button
+              onClick={() => setInputText((prev) => prev + ' 😊')}
+              className="p-2 text-slate-400 hover:text-slate-200 transition-colors"
+              title="Emoji Picker"
+            >
+              <Smile className="w-5 h-5" />
+            </button>
 
-          {/* Attach Paperclip Icon */}
-          <button
-            onClick={() => fileInputRef.current?.click()}
-            className="p-2 text-slate-400 hover:text-slate-200 transition-colors"
-            title="Attach File or Image"
-          >
-            <Paperclip className="w-5 h-5 rotate-45" />
-          </button>
+            {/* Attach Paperclip Icon */}
+            <button
+              onClick={() => fileInputRef.current?.click()}
+              className="p-2 text-slate-400 hover:text-slate-200 transition-colors"
+              title="Attach File or Image"
+            >
+              <Paperclip className="w-5 h-5 rotate-45" />
+            </button>
 
-          {/* Main Input Field */}
-          <div className="flex-1 relative">
-            {isRecordingVoice ? (
-              <div className="flex items-center justify-between text-xs px-2 py-1">
-                <div className="flex items-center space-x-2">
-                  <span className="w-3 h-3 rounded-full bg-rose-500 animate-ping" />
-                  <span className="font-mono text-sky-400 font-bold">
-                    Recording... {formatDuration(recordingSeconds)}
-                  </span>
+            {/* Main Input Field */}
+            <div className="flex-1 relative">
+              {isRecordingVoice ? (
+                <div className="flex items-center justify-between text-xs px-2 py-1">
+                  <div className="flex items-center space-x-2">
+                    <span className="w-3 h-3 rounded-full bg-rose-500 animate-ping" />
+                    <span className="font-mono text-sky-400 font-bold">
+                      Recording... {formatDuration(recordingSeconds)}
+                    </span>
+                  </div>
+                  <div className="flex items-center space-x-2">
+                    <button
+                      onClick={() => setIsRecordingVoice(false)}
+                      className="px-2.5 py-1 rounded-full bg-slate-800 text-slate-300 text-[11px]"
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      onClick={handleStopAndSendVoice}
+                      className="px-3 py-1 rounded-full bg-sky-500 text-white font-bold text-[11px]"
+                    >
+                      Send
+                    </button>
+                  </div>
                 </div>
-                <div className="flex items-center space-x-2">
-                  <button
-                    onClick={() => setIsRecordingVoice(false)}
-                    className="px-2.5 py-1 rounded-full bg-slate-800 text-slate-300 text-[11px]"
-                  >
-                    Cancel
-                  </button>
-                  <button
-                    onClick={handleStopAndSendVoice}
-                    className="px-3 py-1 rounded-full bg-sky-500 text-white font-bold text-[11px]"
-                  >
-                    Send
-                  </button>
-                </div>
-              </div>
+              ) : (
+                <input
+                  type="text"
+                  value={inputText}
+                  onChange={(e) => setInputText(e.target.value)}
+                  onKeyDown={handleKeyPress}
+                  placeholder="Message"
+                  className="w-full bg-transparent border-none text-slate-100 placeholder-slate-400 text-sm focus:outline-none px-2 font-normal"
+                />
+              )}
+            </div>
+
+            {/* Vault Picker trigger */}
+            <button
+              onClick={() => setShowVaultPicker(true)}
+              className="p-2 text-slate-400 hover:text-slate-200 transition-colors hidden sm:block"
+              title="Attach from Vault"
+            >
+              <HardDrive className="w-4 h-4" />
+            </button>
+
+            {/* Circular Sky-Blue Voice / Send Button matching screenshot 5 */}
+            {inputText.trim() ? (
+              <button
+                onClick={handleSend}
+                className="p-2.5 rounded-full bg-sky-500 hover:bg-sky-600 text-white shadow-lg shadow-sky-500/30 transition-all active:scale-95 shrink-0"
+                title="Send Message"
+              >
+                <Send className="w-4 h-4 fill-current" />
+              </button>
             ) : (
-              <input
-                type="text"
-                value={inputText}
-                onChange={(e) => setInputText(e.target.value)}
-                onKeyDown={handleKeyPress}
-                placeholder="Message"
-                className="w-full bg-transparent border-none text-slate-100 placeholder-slate-400 text-sm focus:outline-none px-2 font-normal"
-              />
+              <button
+                onClick={handleStartVoiceRecording}
+                className="p-2.5 rounded-full bg-sky-500 hover:bg-sky-600 text-white shadow-lg shadow-sky-500/30 transition-all active:scale-95 shrink-0"
+                title="Record Voice Note"
+              >
+                <Mic className="w-4 h-4 fill-current" />
+              </button>
             )}
           </div>
-
-          {/* Vault Picker trigger */}
-          <button
-            onClick={() => setShowVaultPicker(true)}
-            className="p-2 text-slate-400 hover:text-slate-200 transition-colors hidden sm:block"
-            title="Attach from Vault"
-          >
-            <HardDrive className="w-4 h-4" />
-          </button>
-
-          {/* Circular Sky-Blue Voice / Send Button matching screenshot 5 */}
-          {inputText.trim() ? (
-            <button
-              onClick={handleSend}
-              className="p-2.5 rounded-full bg-sky-500 hover:bg-sky-600 text-white shadow-lg shadow-sky-500/30 transition-all active:scale-95 shrink-0"
-              title="Send Message"
-            >
-              <Send className="w-4 h-4 fill-current" />
-            </button>
-          ) : (
-            <button
-              onClick={handleStartVoiceRecording}
-              className="p-2.5 rounded-full bg-sky-500 hover:bg-sky-600 text-white shadow-lg shadow-sky-500/30 transition-all active:scale-95 shrink-0"
-              title="Record Voice Note"
-            >
-              <Mic className="w-4 h-4 fill-current" />
-            </button>
-          )}
-        </div>
-      </footer>
+        </footer>
+      )}
 
       {/* Lightbox Modal */}
       {selectedImage && (

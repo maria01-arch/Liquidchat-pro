@@ -1,5 +1,6 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { MessageSquare, Users, PhoneCall, Settings } from 'lucide-react';
+import { motion, AnimatePresence } from 'motion/react';
 import { Sidebar } from './components/Sidebar';
 import { ChatWindow } from './components/ChatWindow';
 import { LiquidVault } from './components/LiquidVault';
@@ -27,7 +28,7 @@ export default function App() {
   const [currentUser, setCurrentUser] = useState<User>(CURRENT_USER);
   const [users, setUsers] = useState<User[]>(MOCK_USERS);
   const [chats, setChats] = useState<Chat[]>(INITIAL_CHATS);
-  const [activeChatId, setActiveChatId] = useState<string | null>('chat_group_002');
+  const [activeChatId, setActiveChatId] = useState<string | null>(null);
   const [messages, setMessages] = useState<Record<string, Message[]>>(INITIAL_MESSAGES);
   const [vaultFiles, setVaultFiles] = useState<CloudFile[]>(INITIAL_FILES);
   const [notifications, setNotifications] = useState<NotificationItem[]>(INITIAL_NOTIFICATIONS);
@@ -35,6 +36,134 @@ export default function App() {
   const [activeTab, setActiveTab] = useState<ActiveTab>('chats');
   const [theme, setTheme] = useState<'dark' | 'light' | 'emerald'>('dark');
   const [wallpaper, setWallpaper] = useState<ChatWallpaper>('telegram-doodle');
+
+  // Smart Navigation Stack with Remembrance & Touch Swiping
+  type NavHistoryItem = { tab: ActiveTab; activeChatId: string | null };
+  const [navHistory, setNavHistory] = useState<NavHistoryItem[]>([]);
+  const [slideDirection, setSlideDirection] = useState<'left' | 'right'>('left');
+
+  const TABS_ORDER: ActiveTab[] = ['chats', 'rooms', 'calls', 'contacts', 'settings'];
+
+  const touchStartRef = useRef<{ x: number; y: number; time: number } | null>(null);
+
+  const navigateTo = (newTab: ActiveTab, newChatId: string | null = null, dir: 'left' | 'right' = 'left') => {
+    if (activeTab === newTab && activeChatId === newChatId) return;
+
+    setNavHistory((prev) => [
+      ...prev,
+      { tab: activeTab, activeChatId },
+    ]);
+    setSlideDirection(dir);
+    setActiveTab(newTab);
+    setActiveChatId(newChatId);
+
+    try {
+      window.history.pushState({ tab: newTab, activeChatId: newChatId }, '');
+    } catch (e) {
+      // ignore
+    }
+  };
+
+  const handleGoBack = () => {
+    setSlideDirection('right');
+    if (activeTab === 'chats' && activeChatId !== null) {
+      setActiveChatId(null);
+      return;
+    }
+
+    if (navHistory.length > 0) {
+      const previous = navHistory[navHistory.length - 1];
+      setNavHistory((prev) => prev.slice(0, -1));
+      setActiveTab(previous.tab);
+      setActiveChatId(previous.activeChatId);
+    } else if (activeTab !== 'chats') {
+      setActiveTab('chats');
+      setActiveChatId(null);
+    }
+  };
+
+  const handleNextTab = () => {
+    const currentIndex = TABS_ORDER.indexOf(activeTab);
+    if (currentIndex < TABS_ORDER.length - 1) {
+      const nextTab = TABS_ORDER[currentIndex + 1];
+      navigateTo(nextTab, null, 'left');
+    }
+  };
+
+  const handlePrevTab = () => {
+    const currentIndex = TABS_ORDER.indexOf(activeTab);
+    if (currentIndex > 0) {
+      const prevTab = TABS_ORDER[currentIndex - 1];
+      navigateTo(prevTab, null, 'right');
+    }
+  };
+
+  const handleTouchStart = (e: React.TouchEvent) => {
+    const target = e.target as HTMLElement;
+    if (
+      target.tagName === 'INPUT' ||
+      target.tagName === 'TEXTAREA' ||
+      target.tagName === 'BUTTON' ||
+      target.closest('button') ||
+      target.closest('input') ||
+      target.isContentEditable
+    ) {
+      return;
+    }
+
+    if (e.touches.length === 1) {
+      touchStartRef.current = {
+        x: e.touches[0].clientX,
+        y: e.touches[0].clientY,
+        time: Date.now(),
+      };
+    }
+  };
+
+  const handleTouchEnd = (e: React.TouchEvent) => {
+    if (!touchStartRef.current) return;
+    const touchEnd = e.changedTouches[0];
+    const deltaX = touchEnd.clientX - touchStartRef.current.x;
+    const deltaY = touchEnd.clientY - touchStartRef.current.y;
+    const deltaTime = Date.now() - touchStartRef.current.time;
+
+    touchStartRef.current = null;
+
+    // Must be a horizontal gesture (abs(deltaX) > 35 and abs(deltaX) > 1.2 * abs(deltaY)) within reasonable time (< 600ms)
+    if (Math.abs(deltaX) > 35 && Math.abs(deltaX) > Math.abs(deltaY) * 1.2 && deltaTime < 600) {
+      if (activeChatId !== null) {
+        // Inside an active chat window
+        if (deltaX > 0) {
+          // Drag finger right -> Swipe left-to-right closes DM and goes back to chat list
+          handleGoBack();
+        }
+        // deltaX < 0 (drag right-to-left inside chat) does NOTHING
+      } else {
+        // On main tabs list
+        if (deltaX < 0) {
+          // Drag finger left -> Swiped left to Next Tab
+          handleNextTab();
+        } else {
+          // Drag finger right -> Swiped right to Prev Tab
+          handlePrevTab();
+        }
+      }
+    }
+  };
+
+  // Browser Back Button (popstate) integration
+  useEffect(() => {
+    const handlePopState = (event: PopStateEvent) => {
+      if (event.state && event.state.tab) {
+        setActiveTab(event.state.tab);
+        setActiveChatId(event.state.activeChatId ?? null);
+      } else {
+        handleGoBack();
+      }
+    };
+    window.addEventListener('popstate', handlePopState);
+    return () => window.removeEventListener('popstate', handlePopState);
+  }, [navHistory, activeTab, activeChatId]);
 
   // Audio / Video Calling States
   const [activeCall, setActiveCall] = useState<ActiveCall | null>(null);
@@ -437,8 +566,12 @@ export default function App() {
           : 'bg-[#F3F4F6] text-gray-900'
       }`}
     >
-      {/* Main Container Layout (Full 100vh without top navbar) */}
-      <div className="flex-1 flex overflow-hidden relative h-full">
+      {/* Main Container Layout (Full 100vh without top navbar) with Swipe Gesture Support */}
+      <div
+        onTouchStart={handleTouchStart}
+        onTouchEnd={handleTouchEnd}
+        className="flex-1 flex overflow-hidden relative h-full"
+      >
         {/* Sidebar */}
         <div
           className={`w-full md:w-80 lg:w-96 shrink-0 h-full ${
@@ -451,15 +584,12 @@ export default function App() {
         >
           <Sidebar
             activeTab={activeTab}
-            setActiveTab={setActiveTab}
+            setActiveTab={(tab) => navigateTo(tab, null, 'left')}
             chats={chats}
             activeChatId={activeChatId}
-            onSelectChat={(id) => {
-              setActiveChatId(id);
-              setActiveTab('chats');
-            }}
+            onSelectChat={(id) => navigateTo('chats', id, 'left')}
             onOpenNewGroupModal={() => setShowNewGroupModal(true)}
-            onOpenNewDirectChatModal={() => setActiveTab('contacts')}
+            onOpenNewDirectChatModal={() => navigateTo('contacts', null, 'left')}
             currentUser={currentUser}
             onOpenUserProfile={() => setShowUserProfileModal(true)}
             onOpenPasskeyModal={() => setShowPasskeyModal(true)}
@@ -467,6 +597,8 @@ export default function App() {
             unreadNotifCount={unreadNotifCount}
             theme={theme}
             setTheme={setTheme}
+            onGoBack={handleGoBack}
+            canGoBack={navHistory.length > 0 || activeChatId !== null || activeTab !== 'chats'}
           />
         </div>
 
@@ -480,163 +612,175 @@ export default function App() {
               : 'flex'
           }`}
         >
-          {activeTab === 'chats' && activeChat && (
-            <ChatWindow
-              chat={activeChat}
-              messages={activeChatMessages}
-              currentUser={currentUser}
-              wallpaper={wallpaper}
-              onSelectWallpaper={(wp) => setWallpaper(wp)}
-              onSendMessage={handleSendMessage}
-              onUpdateSelfDestruct={handleUpdateSelfDestruct}
-              onOpenEncryptionModal={() => setShowEncryptionModal(true)}
-              onAskXchordAI={(prompt) => {
-                setActiveTab('ai');
-              }}
-              vaultFiles={vaultFiles}
-              onSaveToVault={handleUploadVaultFile}
-              onDeleteMessage={handleDeleteMessage}
-              onClearChat={handleClearChat}
-              onBackToList={() => setActiveChatId(null)}
-              onStartCall={(isVideo) => {
-                const members = activeChat.members || [];
-                const peer = members.find((m) => m.id !== currentUser.id) || members[0] || users[1] || currentUser;
-                handleStartCall(peer, isVideo);
-              }}
-              theme={theme}
-              setTheme={setTheme}
-              onOpenProfile={() => setShowUserProfileModal(true)}
-              onOpenContactProfile={(chat) => setSelectedContactChat(chat)}
-            />
-          )}
+          <AnimatePresence mode="wait">
+            <motion.div
+              key={activeTab + (activeChatId || '')}
+              initial={{ opacity: 0, x: slideDirection === 'left' ? 35 : -35 }}
+              animate={{ opacity: 1, x: 0 }}
+              exit={{ opacity: 0, x: slideDirection === 'left' ? -35 : 35 }}
+              transition={{ duration: 0.2, ease: [0.25, 1, 0.5, 1] }}
+              className="flex-1 flex flex-col min-w-0 h-full relative overflow-hidden"
+            >
+              {activeTab === 'chats' && activeChat && (
+                <ChatWindow
+                  chat={activeChat}
+                  messages={activeChatMessages}
+                  currentUser={currentUser}
+                  wallpaper={wallpaper}
+                  onSelectWallpaper={(wp) => setWallpaper(wp)}
+                  onSendMessage={handleSendMessage}
+                  onUpdateSelfDestruct={handleUpdateSelfDestruct}
+                  onOpenEncryptionModal={() => setShowEncryptionModal(true)}
+                  onAskXchordAI={() => {
+                    navigateTo('ai');
+                  }}
+                  vaultFiles={vaultFiles}
+                  onSaveToVault={handleUploadVaultFile}
+                  onDeleteMessage={handleDeleteMessage}
+                  onClearChat={handleClearChat}
+                  onBackToList={() => handleGoBack()}
+                  onStartCall={(isVideo) => {
+                    const members = activeChat.members || [];
+                    const peer = members.find((m) => m.id !== currentUser.id) || members[0] || users[1] || currentUser;
+                    handleStartCall(peer, isVideo);
+                  }}
+                  theme={theme}
+                  setTheme={setTheme}
+                  onOpenProfile={() => setShowUserProfileModal(true)}
+                  onOpenContactProfile={(chat) => setSelectedContactChat(chat)}
+                />
+              )}
 
-          {activeTab === 'chats' && !activeChat && (
-            <div className="flex-1 flex flex-col items-center justify-center p-8 text-center bg-[#F9FAFB] dark:bg-slate-900">
-              <div className="w-16 h-16 rounded-2xl bg-blue-100 dark:bg-blue-900/40 text-blue-600 dark:text-blue-400 flex items-center justify-center mb-4 shadow-sm">
-                <svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
-                </svg>
-              </div>
-              <h2 className="text-base font-bold text-gray-800 dark:text-slate-100 mb-1">
-                LIQUIDCHAT Web
-              </h2>
-              <p className="text-xs text-gray-500 dark:text-slate-400 max-w-sm">
-                Select a contact or room conversation from the list to start messaging with End-to-End Encryption.
-              </p>
-            </div>
-          )}
+              {activeTab === 'chats' && !activeChat && (
+                <div className="flex-1 flex flex-col items-center justify-center p-8 text-center bg-[#F9FAFB] dark:bg-slate-900 select-none">
+                  <div className="w-16 h-16 rounded-2xl bg-blue-100 dark:bg-blue-900/40 text-blue-600 dark:text-blue-400 flex items-center justify-center mb-4 shadow-sm">
+                    <svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
+                    </svg>
+                  </div>
+                  <h2 className="text-base font-bold text-gray-800 dark:text-slate-100 mb-1">
+                    LIQUIDCHAT Web
+                  </h2>
+                  <p className="text-xs text-gray-500 dark:text-slate-400 max-w-sm">
+                    Select a conversation from the list to start messaging with Zero-Knowledge E2EE.
+                  </p>
+                </div>
+              )}
 
-          {activeTab === 'rooms' && (
-            <div className="flex-1 flex flex-col h-full overflow-hidden pb-16 md:pb-0">
-              <RoomsTab
-                chats={chats}
-                users={users}
-                onSelectRoom={(id) => {
-                  setActiveChatId(id);
-                  setActiveTab('chats');
-                }}
-                onOpenCreateRoomModal={() => setShowNewGroupModal(true)}
-                currentUser={currentUser}
-                unreadNotifCount={unreadNotifCount}
-                onOpenNotifications={() => setShowNotifications(true)}
-                onOpenUserProfile={() => setShowUserProfileModal(true)}
-                theme={theme}
-                setTheme={setTheme}
-                onBackToChats={() => setActiveTab('chats')}
-              />
-            </div>
-          )}
+              {activeTab === 'rooms' && (
+                <div className="flex-1 flex flex-col h-full overflow-hidden pb-16 md:pb-0">
+                  <RoomsTab
+                    chats={chats}
+                    users={users}
+                    onSelectRoom={(id) => {
+                      navigateTo('chats', id);
+                    }}
+                    onOpenCreateRoomModal={() => setShowNewGroupModal(true)}
+                    currentUser={currentUser}
+                    unreadNotifCount={unreadNotifCount}
+                    onOpenNotifications={() => setShowNotifications(true)}
+                    onOpenUserProfile={() => setShowUserProfileModal(true)}
+                    theme={theme}
+                    setTheme={setTheme}
+                    onBackToChats={handleGoBack}
+                  />
+                </div>
+              )}
 
-          {activeTab === 'calls' && (
-            <div className="flex-1 flex flex-col h-full overflow-hidden pb-16 md:pb-0">
-              <CallsTab
-                callLogs={callLogs}
-                contacts={users}
-                onStartCall={handleStartCall}
-                currentUser={currentUser}
-                unreadNotifCount={unreadNotifCount}
-                onOpenNotifications={() => setShowNotifications(true)}
-                onOpenUserProfile={() => setShowUserProfileModal(true)}
-                theme={theme}
-                setTheme={setTheme}
-                onBackToChats={() => setActiveTab('chats')}
-              />
-            </div>
-          )}
+              {activeTab === 'calls' && (
+                <div className="flex-1 flex flex-col h-full overflow-hidden pb-16 md:pb-0">
+                  <CallsTab
+                    callLogs={callLogs}
+                    contacts={users}
+                    onStartCall={handleStartCall}
+                    currentUser={currentUser}
+                    unreadNotifCount={unreadNotifCount}
+                    onOpenNotifications={() => setShowNotifications(true)}
+                    onOpenUserProfile={() => setShowUserProfileModal(true)}
+                    theme={theme}
+                    setTheme={setTheme}
+                    onBackToChats={handleGoBack}
+                  />
+                </div>
+              )}
 
-          {activeTab === 'vault' && (
-            <div className="flex-1 flex flex-col h-full overflow-hidden pb-16 md:pb-0">
-              <LiquidVault
-                files={vaultFiles}
-                onUploadFile={handleUploadVaultFile}
-                onDeleteFile={handleDeleteVaultFile}
-                onToggleFavorite={handleToggleVaultFavorite}
-                chats={chats}
-                onShareToChat={handleShareVaultFileToChat}
-                currentUser={currentUser}
-                unreadNotifCount={unreadNotifCount}
-                onOpenNotifications={() => setShowNotifications(true)}
-                onOpenUserProfile={() => setShowUserProfileModal(true)}
-                theme={theme}
-                setTheme={setTheme}
-                onBackToChats={() => setActiveTab('chats')}
-              />
-            </div>
-          )}
+              {activeTab === 'vault' && (
+                <div className="flex-1 flex flex-col h-full overflow-hidden pb-16 md:pb-0">
+                  <LiquidVault
+                    files={vaultFiles}
+                    onUploadFile={handleUploadVaultFile}
+                    onDeleteFile={handleDeleteVaultFile}
+                    onToggleFavorite={handleToggleVaultFavorite}
+                    chats={chats}
+                    onShareToChat={handleShareVaultFileToChat}
+                    currentUser={currentUser}
+                    unreadNotifCount={unreadNotifCount}
+                    onOpenNotifications={() => setShowNotifications(true)}
+                    onOpenUserProfile={() => setShowUserProfileModal(true)}
+                    theme={theme}
+                    setTheme={setTheme}
+                    onBackToChats={handleGoBack}
+                  />
+                </div>
+              )}
 
-          {activeTab === 'ai' && (
-            <div className="flex-1 flex flex-col h-full overflow-hidden pb-16 md:pb-0">
-              <XchordAIHub
-                onAskAI={handleAskXchordAI}
-                currentUser={currentUser}
-                unreadNotifCount={unreadNotifCount}
-                onOpenNotifications={() => setShowNotifications(true)}
-                onOpenUserProfile={() => setShowUserProfileModal(true)}
-                theme={theme}
-                setTheme={setTheme}
-                onBackToChats={() => setActiveTab('chats')}
-              />
-            </div>
-          )}
+              {activeTab === 'ai' && (
+                <div className="flex-1 flex flex-col h-full overflow-hidden pb-16 md:pb-0">
+                  <XchordAIHub
+                    onAskAI={handleAskXchordAI}
+                    currentUser={currentUser}
+                    unreadNotifCount={unreadNotifCount}
+                    onOpenNotifications={() => setShowNotifications(true)}
+                    onOpenUserProfile={() => setShowUserProfileModal(true)}
+                    theme={theme}
+                    setTheme={setTheme}
+                    onBackToChats={handleGoBack}
+                  />
+                </div>
+              )}
 
-          {activeTab === 'contacts' && (
-            <div className="flex-1 flex flex-col h-full overflow-hidden pb-16 md:pb-0">
-              <ContactsTab
-                users={users}
-                currentUser={currentUser}
-                onStartChat={handleStartDirectChat}
-                unreadNotifCount={unreadNotifCount}
-                onOpenNotifications={() => setShowNotifications(true)}
-                onOpenUserProfile={() => setShowUserProfileModal(true)}
-                theme={theme}
-                setTheme={setTheme}
-                onBackToChats={() => setActiveTab('chats')}
-              />
-            </div>
-          )}
+              {activeTab === 'contacts' && (
+                <div className="flex-1 flex flex-col h-full overflow-hidden pb-16 md:pb-0">
+                  <ContactsTab
+                    users={users}
+                    currentUser={currentUser}
+                    onStartChat={(chatId) => navigateTo('chats', chatId)}
+                    unreadNotifCount={unreadNotifCount}
+                    onOpenNotifications={() => setShowNotifications(true)}
+                    onOpenUserProfile={() => setShowUserProfileModal(true)}
+                    theme={theme}
+                    setTheme={setTheme}
+                    onBackToChats={handleGoBack}
+                  />
+                </div>
+              )}
 
-          {activeTab === 'settings' && (
-            <div className="flex-1 flex flex-col h-full overflow-hidden pb-16 md:pb-0">
-              <SettingsTab
-                currentUser={currentUser}
-                theme={theme}
-                setTheme={setTheme}
-                onOpenPasskeyModal={() => setShowPasskeyModal(true)}
-                onOpenAuthModal={() => setShowAuthModal(true)}
-                unreadNotifCount={unreadNotifCount}
-                onOpenNotifications={() => setShowNotifications(true)}
-                onOpenUserProfile={() => setShowUserProfileModal(true)}
-                onBackToChats={() => setActiveTab('chats')}
-              />
-            </div>
-          )}
+              {activeTab === 'settings' && (
+                <div className="flex-1 flex flex-col h-full overflow-hidden pb-16 md:pb-0">
+                  <SettingsTab
+                    currentUser={currentUser}
+                    theme={theme}
+                    setTheme={setTheme}
+                    onOpenPasskeyModal={() => setShowPasskeyModal(true)}
+                    onOpenAuthModal={() => setShowAuthModal(true)}
+                    unreadNotifCount={unreadNotifCount}
+                    onOpenNotifications={() => setShowNotifications(true)}
+                    onOpenUserProfile={() => setShowUserProfileModal(true)}
+                    onBackToChats={handleGoBack}
+                  />
+                </div>
+              )}
+            </motion.div>
+          </AnimatePresence>
 
-          {/* Floating Mobile Bottom Navigation Bar with fluid spring animation */}
-          {activeTab !== 'chats' && (
+          {/* Floating Mobile Bottom Navigation Bar */}
+          {(!activeChatId || activeTab !== 'chats') && (
             <div className="md:hidden fixed bottom-2 inset-x-2 z-40">
               <LiquidNavBar
                 activeTab={activeTab}
-                setActiveTab={setActiveTab}
+                setActiveTab={(tab) =>
+                  navigateTo(tab, null, TABS_ORDER.indexOf(tab) >= TABS_ORDER.indexOf(activeTab) ? 'left' : 'right')
+                }
                 unreadChatsCount={chats.filter((c) => c.unreadCount > 0).length}
               />
             </div>
