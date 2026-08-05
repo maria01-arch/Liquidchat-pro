@@ -29,7 +29,7 @@ export const LiquidNavBar: React.FC<LiquidNavBarProps> = ({
   ];
 
   return (
-    <div className="mx-2 mb-2 p-1.5 bg-white/85 dark:bg-slate-900/85 backdrop-blur-2xl border border-gray-200/80 dark:border-slate-800/80 rounded-3xl shadow-2xl flex items-center justify-around select-none">
+    <div className="p-1.5 bg-white/90 dark:bg-slate-900/90 backdrop-blur-2xl border border-gray-200/80 dark:border-slate-800/80 rounded-3xl shadow-2xl flex items-center justify-around select-none">
       {navItems.map((item) => {
         const Icon = item.icon;
         const isActive = activeTab === item.key;

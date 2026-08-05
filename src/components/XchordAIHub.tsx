@@ -65,7 +65,7 @@ export const XchordAIHub: React.FC<XchordAIHubProps> = ({
   };
 
   return (
-    <div className="flex-1 flex flex-col h-full bg-slate-950 overflow-hidden">
+    <div className="flex-1 flex flex-col h-full bg-gray-50 dark:bg-slate-950 overflow-hidden">
       <PageHeader
         title="xchord AI Assistant"
         subtitle="Intelligent E2EE security analysis, smart responses & task execution"
@@ -80,19 +80,19 @@ export const XchordAIHub: React.FC<XchordAIHubProps> = ({
         onBackToChats={onBackToChats}
       />
 
-      <div className="flex-1 overflow-y-auto p-4 sm:p-6 space-y-6">
+      <div className="flex-1 overflow-y-auto p-4 sm:p-6 pb-24 md:pb-6 space-y-6">
         {/* Header Banner */}
-      <div className="bg-gradient-to-r from-indigo-950 via-slate-900 to-purple-950/50 border border-indigo-500/20 rounded-3xl p-6 shadow-xl flex items-center justify-between">
+      <div className="bg-white dark:bg-slate-900 border border-gray-200 dark:border-slate-800 rounded-3xl p-6 shadow-xs flex items-center justify-between">
         <div className="space-y-1">
           <div className="flex items-center space-x-2">
-            <Bot className="w-7 h-7 text-indigo-400 animate-bounce" />
-            <h1 className="text-xl font-bold text-slate-100">xchord AI • Workspace Assistant</h1>
+            <Bot className="w-7 h-7 text-indigo-600 dark:text-indigo-400 animate-bounce" />
+            <h1 className="text-xl font-bold text-gray-900 dark:text-slate-100">xchord AI • Workspace Assistant</h1>
           </div>
-          <p className="text-xs text-slate-400">
+          <p className="text-xs text-gray-500 dark:text-slate-400">
             Powered by xchordlabs corp. Intelligent advice, task automation, and security analysis.
           </p>
         </div>
-        <span className="px-3 py-1 rounded-full bg-indigo-500/10 border border-indigo-500/30 text-indigo-300 font-mono text-xs font-bold">
+        <span className="px-3 py-1 rounded-full bg-indigo-50 dark:bg-indigo-500/10 border border-indigo-200 dark:border-indigo-500/30 text-indigo-600 dark:text-indigo-300 font-mono text-xs font-bold">
           Gemini 3.6 Flash
         </span>
       </div>
@@ -101,28 +101,28 @@ export const XchordAIHub: React.FC<XchordAIHubProps> = ({
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
         {[
           {
-            icon: <ListTodo className="w-5 h-5 text-emerald-400" />,
+            icon: <ListTodo className="w-5 h-5 text-emerald-500" />,
             title: 'Task & Todo Generator',
             desc: 'Extract action items and todo items from recent messages.',
             prompt: 'Extract 5 clear action items and tasks for a software team building an encrypted app.',
             mode: 'task',
           },
           {
-            icon: <ShieldCheck className="w-5 h-5 text-teal-400" />,
+            icon: <ShieldCheck className="w-5 h-5 text-teal-500" />,
             title: 'Passkey & E2EE Audit',
             desc: 'Audit your security posture & passkey phrase storage.',
             prompt: 'Provide a 4-step checklist for managing a 12-word recovery passkey securely.',
             mode: 'security_advice',
           },
           {
-            icon: <MessageSquare className="w-5 h-5 text-indigo-400" />,
+            icon: <MessageSquare className="w-5 h-5 text-indigo-500" />,
             title: 'Group Chat Summarizer',
             desc: 'Summarize chat highlights and key decisions.',
             prompt: 'Summarize key points about liquidchat architecture, self-destruct timers, and Liquid Vault storage.',
             mode: 'summarize',
           },
           {
-            icon: <Lightbulb className="w-5 h-5 text-amber-400" />,
+            icon: <Lightbulb className="w-5 h-5 text-amber-500" />,
             title: 'Smart Reply Assistant',
             desc: 'Draft friendly or professional responses.',
             prompt: 'Suggest 3 professional replies confirming receipt of encrypted project documentation.',
@@ -132,37 +132,37 @@ export const XchordAIHub: React.FC<XchordAIHubProps> = ({
           <button
             key={idx}
             onClick={() => handleSend(card.prompt, card.mode)}
-            className="p-4 bg-slate-900 hover:bg-slate-800/80 border border-slate-800 hover:border-indigo-500/30 rounded-3xl text-left transition-all space-y-2 group"
+            className="p-4 bg-white dark:bg-slate-900 hover:bg-gray-50 dark:hover:bg-slate-800/80 border border-gray-200 dark:border-slate-800 hover:border-indigo-500/40 rounded-3xl text-left transition-all space-y-2 group shadow-xs"
           >
-            <div className="p-2 rounded-2xl bg-slate-950 w-fit border border-slate-800 group-hover:scale-110 transition-transform">
+            <div className="p-2 rounded-2xl bg-gray-100 dark:bg-slate-950 w-fit border border-gray-200 dark:border-slate-800 group-hover:scale-110 transition-transform">
               {card.icon}
             </div>
-            <h3 className="font-bold text-xs text-slate-100">{card.title}</h3>
-            <p className="text-[11px] text-slate-400 leading-relaxed">{card.desc}</p>
+            <h3 className="font-bold text-xs text-gray-900 dark:text-slate-100">{card.title}</h3>
+            <p className="text-[11px] text-gray-500 dark:text-slate-400 leading-relaxed">{card.desc}</p>
           </button>
         ))}
       </div>
 
       {/* Response Display Area */}
-      <div className="flex-1 bg-slate-900 border border-slate-800 rounded-3xl p-5 flex flex-col justify-between shadow-lg relative">
-        <div className="flex items-center justify-between pb-3 border-b border-slate-800 mb-3">
-          <div className="flex items-center space-x-2 text-indigo-400 font-bold text-xs">
+      <div className="flex-1 bg-white dark:bg-slate-900 border border-gray-200 dark:border-slate-800 rounded-3xl p-5 flex flex-col justify-between shadow-xs relative min-h-[220px]">
+        <div className="flex items-center justify-between pb-3 border-b border-gray-100 dark:border-slate-800 mb-3">
+          <div className="flex items-center space-x-2 text-indigo-600 dark:text-indigo-400 font-bold text-xs">
             <Sparkles className="w-4 h-4" />
             <span>xchord AI Response Output</span>
           </div>
 
           <button
             onClick={handleCopy}
-            className="flex items-center space-x-1 px-2.5 py-1 rounded-xl bg-slate-800 text-slate-300 hover:text-white text-xs"
+            className="flex items-center space-x-1 px-2.5 py-1 rounded-xl bg-gray-100 dark:bg-slate-800 text-gray-700 dark:text-slate-300 hover:text-gray-900 dark:hover:text-white text-xs font-medium transition-colors"
           >
-            {copied ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
+            {copied ? <Check className="w-3.5 h-3.5 text-emerald-500" /> : <Copy className="w-3.5 h-3.5" />}
             <span>{copied ? 'Copied' : 'Copy'}</span>
           </button>
         </div>
 
-        <div className="flex-1 overflow-y-auto text-xs text-slate-200 leading-relaxed space-y-2 font-sans whitespace-pre-wrap">
+        <div className="flex-1 overflow-y-auto text-xs text-gray-800 dark:text-slate-200 leading-relaxed space-y-2 font-sans whitespace-pre-wrap">
           {loading ? (
-            <div className="flex items-center justify-center h-full space-x-2 text-indigo-400 py-12">
+            <div className="flex items-center justify-center h-full space-x-2 text-indigo-600 dark:text-indigo-400 py-12">
               <RefreshCw className="w-5 h-5 animate-spin" />
               <span className="font-semibold">xchord AI is thinking...</span>
             </div>
@@ -172,7 +172,7 @@ export const XchordAIHub: React.FC<XchordAIHubProps> = ({
         </div>
 
         {/* Prompt Input */}
-        <div className="pt-4 border-t border-slate-800 flex items-end space-x-2 mt-3">
+        <div className="pt-4 border-t border-gray-100 dark:border-slate-800 flex items-end space-x-2 mt-3">
           <textarea
             ref={textareaRef}
             rows={1}
@@ -185,7 +185,7 @@ export const XchordAIHub: React.FC<XchordAIHubProps> = ({
               }
             }}
             placeholder="Ask xchord AI anything about tasks, advice, or code..."
-            className="flex-1 px-4 py-2.5 bg-slate-950 border border-slate-800 rounded-2xl text-xs text-slate-100 placeholder-slate-500 focus:outline-none focus:border-indigo-500/50 resize-none overflow-y-auto leading-relaxed"
+            className="flex-1 px-4 py-2.5 bg-gray-50 dark:bg-slate-950 border border-gray-200 dark:border-slate-800 rounded-2xl text-xs text-gray-900 dark:text-slate-100 placeholder-gray-400 focus:outline-none focus:border-indigo-500/50 resize-none overflow-y-auto leading-relaxed"
             style={{ minHeight: '38px', maxHeight: '120px' }}
           />
           <button
@@ -193,8 +193,8 @@ export const XchordAIHub: React.FC<XchordAIHubProps> = ({
             disabled={!prompt.trim() || loading}
             className={`p-2.5 rounded-2xl font-bold transition-all shrink-0 ${
               prompt.trim() && !loading
-                ? 'bg-gradient-to-r from-indigo-500 to-purple-500 text-white shadow-md'
-                : 'bg-slate-800 text-slate-600 cursor-not-allowed'
+                ? 'bg-indigo-600 hover:bg-indigo-500 text-white shadow-md'
+                : 'bg-gray-200 dark:bg-slate-800 text-gray-400 dark:text-slate-600 cursor-not-allowed'
             }`}
           >
             <Send className="w-4 h-4" />
