@@ -1,6 +1,6 @@
 import React from 'react';
 import { PageHeader } from './PageHeader';
-import { User as UserIcon, Key, ShieldCheck, Moon, Sparkles, Sun, HardDrive, BellRing, Lock, Info, Settings } from 'lucide-react';
+import { User as UserIcon, Key, ShieldCheck, Moon, Sparkles, Sun, HardDrive, BellRing, Lock, Info, Settings, Globe, Compass } from 'lucide-react';
 import { User } from '../types';
 
 interface SettingsTabProps {
@@ -13,6 +13,9 @@ interface SettingsTabProps {
   onOpenNotifications?: () => void;
   onOpenUserProfile?: () => void;
   onBackToChats?: () => void;
+  useInAppBrowser?: boolean;
+  setUseInAppBrowser?: (val: boolean) => void;
+  onOpenBrowser?: () => void;
 }
 
 export const SettingsTab: React.FC<SettingsTabProps> = ({
@@ -25,6 +28,9 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
   onOpenNotifications,
   onOpenUserProfile,
   onBackToChats,
+  useInAppBrowser = true,
+  setUseInAppBrowser,
+  onOpenBrowser,
 }) => {
   return (
     <div className="flex-1 flex flex-col h-full bg-slate-950 overflow-hidden">
@@ -111,6 +117,46 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
             </button>
           ))}
         </div>
+      </div>
+
+      {/* In-App Browser & Search Engine Settings */}
+      <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 shadow-xl space-y-4">
+        <div className="flex items-center justify-between">
+          <div className="space-y-1 pr-4">
+            <h3 className="font-bold text-sm text-slate-100 flex items-center space-x-2">
+              <Globe className="w-4 h-4 text-sky-400" />
+              <span>In-App Browser & Web Search Engine</span>
+            </h3>
+            <p className="text-xs text-slate-400 leading-relaxed">
+              When enabled, web links in conversations open inside LiquidChat's built-in secure browser instead of launching an external app.
+            </p>
+          </div>
+          <button
+            onClick={() => setUseInAppBrowser?.(!useInAppBrowser)}
+            className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
+              useInAppBrowser ? 'bg-sky-500' : 'bg-slate-800'
+            }`}
+          >
+            <span
+              className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow-lg ring-0 transition duration-200 ease-in-out ${
+                useInAppBrowser ? 'translate-x-5' : 'translate-x-0'
+              }`}
+            />
+          </button>
+        </div>
+
+        {onOpenBrowser && (
+          <div className="pt-2 border-t border-slate-800 flex items-center justify-between">
+            <span className="text-xs text-slate-400">Launch Inbuilt Web Browser & Search:</span>
+            <button
+              onClick={onOpenBrowser}
+              className="px-3.5 py-1.5 bg-sky-500/10 hover:bg-sky-500/20 text-sky-400 font-bold text-xs rounded-xl border border-sky-500/30 transition-colors flex items-center space-x-1.5"
+            >
+              <Compass className="w-3.5 h-3.5" />
+              <span>Open Search Engine</span>
+            </button>
+          </div>
+        )}
       </div>
 
       {/* Corporate Info */}

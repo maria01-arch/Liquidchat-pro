@@ -27,13 +27,17 @@ import {
   Moon,
   Droplets,
   Volume2,
-  Ban
+  Ban,
+  Square,
+  Check,
+  ExternalLink
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { Chat, Message, User, CloudFile, ChatWallpaper } from '../types';
 import { decryptE2EEMessage } from '../utils/crypto';
-import { playSendSound, formatDuration, generateWaveformData } from '../utils/audio';
+import { playSendSound, formatDuration, generateWaveformData, playVoiceSynthNote } from '../utils/audio';
 import { WallpaperModal } from './WallpaperModal';
+import { ImageEditorModal } from './ImageEditorModal';
 
 interface ChatWindowProps {
   chat: Chat;
@@ -46,6 +50,7 @@ interface ChatWindowProps {
   vaultFiles: CloudFile[];
   onSaveToVault: (file: Partial<CloudFile>) => void;
   onDeleteMessage: (msgId: string) => void;
+  onToggleReaction?: (msgId: string, emoji: string) => void;
   onClearChat?: (chatId: string) => void;
   onBackToList?: () => void;
   wallpaper?: ChatWallpaper;
@@ -55,6 +60,7 @@ interface ChatWindowProps {
   setTheme?: (theme: 'dark' | 'light' | 'emerald') => void;
   onOpenProfile?: () => void;
   onOpenContactProfile?: (chat: Chat) => void;
+  onOpenUrl?: (url: string) => void;
 }
 
 export const ChatWindow: React.FC<ChatWindowProps> = ({
@@ -68,6 +74,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
   vaultFiles,
   onSaveToVault,
   onDeleteMessage,
+  onToggleReaction,
   onClearChat,
   onBackToList,
   wallpaper,
@@ -77,23 +84,53 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
   setTheme,
   onOpenProfile,
   onOpenContactProfile,
+  onOpenUrl,
 }) => {
   const [inputText, setInputText] = useState('');
   const [replyingTo, setReplyingTo] = useState<Message | null>(null);
   const [selectedImage, setSelectedImage] = useState<string | null>(null);
   const [showVaultPicker, setShowVaultPicker] = useState(false);
 
+  // Reaction picker state & long press timer
+  const [activeReactionPickerMsgId, setActiveReactionPickerMsgId] = useState<string | null>(null);
+  const longPressTimerRef = useRef<any>(null);
+
   // Popover menus state
   const [showCallMenu, setShowCallMenu] = useState(false);
   const [showThreeDotsMenu, setShowThreeDotsMenu] = useState(false);
   const [timerSubMenuOpen, setTimerSubMenuOpen] = useState(false);
 
-  // Voice recording & playback state
+  // Voice recording, local preview & playback state
   const [isRecordingVoice, setIsRecordingVoice] = useState(false);
   const [recordingSeconds, setRecordingSeconds] = useState(0);
+  const [recordedVoicePreview, setRecordedVoicePreview] = useState<{
+    url?: string;
+    duration: number;
+  } | null>(null);
+
+  const [isPreviewPlaying, setIsPreviewPlaying] = useState(false);
+  const [previewProgress, setPreviewProgress] = useState(0);
+  const [previewPlaybackSpeed, setPreviewPlaybackSpeed] = useState<number>(1);
+  const previewAudioRef = useRef<HTMLAudioElement | null>(null);
+  const previewSynthRef = useRef<{ stop: () => void } | null>(null);
+  const previewIntervalRef = useRef<any>(null);
+
+  const [pendingImage, setPendingImage] = useState<{
+    url: string;
+    fileName: string;
+    fileSize: string;
+  } | null>(null);
+
   const [playingVoiceId, setPlayingVoiceId] = useState<string | null>(null);
   const [playbackSpeed, setPlaybackSpeed] = useState<number>(1);
   const recordingTimerRef = useRef<any>(null);
+
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+  const audioChunksRef = useRef<Blob[]>([]);
+  const [recordedAudioUrl, setRecordedAudioUrl] = useState<string | null>(null);
+
+  const activeSynthRef = useRef<{ stop: () => void } | null>(null);
+  const activeAudioElemRef = useRef<HTMLAudioElement | null>(null);
 
   const [showWallpaperModal, setShowWallpaperModal] = useState(false);
   const [isBlocked, setIsBlocked] = useState(false);
@@ -120,6 +157,41 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
       if (recordingTimerRef.current) clearInterval(recordingTimerRef.current);
     };
   }, [isRecordingVoice]);
+
+  const stopActiveVoicePlayback = () => {
+    if (activeSynthRef.current) {
+      activeSynthRef.current.stop();
+      activeSynthRef.current = null;
+    }
+    if (activeAudioElemRef.current) {
+      activeAudioElemRef.current.pause();
+      activeAudioElemRef.current = null;
+    }
+  };
+
+  const stopPreviewPlayback = () => {
+    if (previewSynthRef.current) {
+      previewSynthRef.current.stop();
+      previewSynthRef.current = null;
+    }
+    if (previewAudioRef.current) {
+      previewAudioRef.current.pause();
+      previewAudioRef.current = null;
+    }
+    if (previewIntervalRef.current) {
+      clearInterval(previewIntervalRef.current);
+      previewIntervalRef.current = null;
+    }
+    setIsPreviewPlaying(false);
+    setPreviewProgress(0);
+  };
+
+  useEffect(() => {
+    return () => {
+      stopActiveVoicePlayback();
+      stopPreviewPlayback();
+    };
+  }, []);
 
   const handleSend = () => {
     if (!inputText.trim() && !replyingTo) return;
@@ -152,33 +224,206 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
     const reader = new FileReader();
     reader.onload = (event) => {
       if (event.target?.result) {
-        onSendMessage(chat.id, 'Shared an image', 'image', {
-          attachmentUrl: event.target.result as string,
-          attachmentName: file.name,
-          attachmentSize: `${(file.size / 1024 / 1024).toFixed(2)} MB`,
+        setPendingImage({
+          url: event.target.result as string,
+          fileName: file.name,
+          fileSize: `${(file.size / 1024 / 1024).toFixed(2)} MB`,
         });
       }
     };
     reader.readAsDataURL(file);
+    e.target.value = '';
   };
 
-  const handleStartVoiceRecording = () => {
+  const handleStartVoiceRecording = async () => {
+    stopPreviewPlayback();
+    setRecordedVoicePreview(null);
     setIsRecordingVoice(true);
+    setRecordedAudioUrl(null);
+    audioChunksRef.current = [];
+
+    try {
+      if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
+        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        const recorder = new MediaRecorder(stream);
+        mediaRecorderRef.current = recorder;
+
+        recorder.ondataavailable = (e) => {
+          if (e.data.size > 0) {
+            audioChunksRef.current.push(e.data);
+          }
+        };
+
+        recorder.start(100); // collect 100ms chunks
+      }
+    } catch (e) {
+      console.warn('Microphone access unavailable or denied:', e);
+    }
   };
 
-  const handleStopAndSendVoice = () => {
+  const handleCancelVoiceRecording = () => {
+    if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
+      try {
+        mediaRecorderRef.current.stop();
+      } catch (e) {}
+    }
+    if (mediaRecorderRef.current?.stream) {
+      mediaRecorderRef.current.stream.getTracks().forEach((track) => track.stop());
+    }
     setIsRecordingVoice(false);
-    onSendMessage(chat.id, 'Voice message', 'voice', {
-      voiceDuration: recordingSeconds || 5,
-    });
     setRecordingSeconds(0);
+    stopPreviewPlayback();
+    setRecordedVoicePreview(null);
+  };
+
+  const handleStopVoiceToPreview = async () => {
+    setIsRecordingVoice(false);
+    const duration = recordingSeconds || 1;
+    setRecordingSeconds(0);
+
+    let audioDataUrl: string | undefined = undefined;
+
+    if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
+      const recorder = mediaRecorderRef.current;
+      await new Promise<void>((resolve) => {
+        recorder.onstop = () => {
+          resolve();
+        };
+        try {
+          recorder.stop();
+        } catch (e) {
+          resolve();
+        }
+      });
+
+      if (recorder.stream) {
+        recorder.stream.getTracks().forEach((track) => track.stop());
+      }
+
+      if (audioChunksRef.current.length > 0) {
+        const blob = new Blob(audioChunksRef.current, { type: 'audio/webm' });
+        if (blob.size > 0) {
+          audioDataUrl = await new Promise<string>((resolve) => {
+            const reader = new FileReader();
+            reader.onloadend = () => resolve((reader.result as string) || '');
+            reader.readAsDataURL(blob);
+          });
+        }
+      }
+    }
+
+    setRecordedVoicePreview({
+      url: audioDataUrl,
+      duration: duration,
+    });
+  };
+
+  const cyclePreviewSpeed = () => {
+    const nextSpeed = previewPlaybackSpeed === 1 ? 1.5 : previewPlaybackSpeed === 1.5 ? 2 : 1;
+    setPreviewPlaybackSpeed(nextSpeed);
+    if (previewAudioRef.current) {
+      previewAudioRef.current.playbackRate = nextSpeed;
+    }
+  };
+
+  const handleTogglePlayPreview = () => {
+    if (!recordedVoicePreview) return;
+
+    if (isPreviewPlaying) {
+      stopPreviewPlayback();
+      return;
+    }
+
+    stopPreviewPlayback();
+    setIsPreviewPlaying(true);
+    setPreviewProgress(0);
+
+    const startTime = Date.now();
+    previewIntervalRef.current = setInterval(() => {
+      const elapsed = ((Date.now() - startTime) / 1000) * previewPlaybackSpeed;
+      if (elapsed >= recordedVoicePreview.duration) {
+        stopPreviewPlayback();
+      } else {
+        setPreviewProgress(elapsed);
+      }
+    }, 100);
+
+    if (recordedVoicePreview.url) {
+      try {
+        const audio = new Audio(recordedVoicePreview.url);
+        audio.playbackRate = previewPlaybackSpeed;
+        previewAudioRef.current = audio;
+        audio.play().catch(() => {
+          const synth = playVoiceSynthNote(recordedVoicePreview.duration / previewPlaybackSpeed, () => {
+            stopPreviewPlayback();
+          });
+          previewSynthRef.current = synth;
+        });
+        audio.onended = () => {
+          stopPreviewPlayback();
+        };
+      } catch (e) {
+        const synth = playVoiceSynthNote(recordedVoicePreview.duration / previewPlaybackSpeed, () => {
+          stopPreviewPlayback();
+        });
+        previewSynthRef.current = synth;
+      }
+    } else {
+      const synth = playVoiceSynthNote(recordedVoicePreview.duration / previewPlaybackSpeed, () => {
+        stopPreviewPlayback();
+      });
+      previewSynthRef.current = synth;
+    }
+  };
+
+  const handleSendRecordedVoicePreview = () => {
+    if (!recordedVoicePreview) return;
+    const { duration, url } = recordedVoicePreview;
+    stopPreviewPlayback();
+    playSendSound();
+
+    onSendMessage(chat.id, 'Voice message', 'voice', {
+      voiceDuration: duration,
+      attachmentUrl: url,
+    });
+
+    setRecordedVoicePreview(null);
   };
 
   const handleTogglePlayVoice = (msg: Message) => {
     if (playingVoiceId === msg.id) {
+      stopActiveVoicePlayback();
       setPlayingVoiceId(null);
+      return;
+    }
+
+    stopActiveVoicePlayback();
+    setPlayingVoiceId(msg.id);
+
+    if (msg.attachmentUrl) {
+      try {
+        const audio = new Audio(msg.attachmentUrl);
+        activeAudioElemRef.current = audio;
+        audio.play().catch(() => {
+          const synth = playVoiceSynthNote(msg.voiceDuration || 5, () => {
+            setPlayingVoiceId(null);
+          });
+          activeSynthRef.current = synth;
+        });
+        audio.onended = () => {
+          setPlayingVoiceId(null);
+        };
+      } catch (e) {
+        const synth = playVoiceSynthNote(msg.voiceDuration || 5, () => {
+          setPlayingVoiceId(null);
+        });
+        activeSynthRef.current = synth;
+      }
     } else {
-      setPlayingVoiceId(msg.id);
+      const synth = playVoiceSynthNote(msg.voiceDuration || 5, () => {
+        setPlayingVoiceId(null);
+      });
+      activeSynthRef.current = synth;
     }
   };
 
@@ -540,6 +785,19 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
               const isMe = msg.senderId === currentUser.id;
               const decryptedContent = decryptE2EEMessage(msg.content);
 
+              const startLongPress = () => {
+                if (longPressTimerRef.current) clearTimeout(longPressTimerRef.current);
+                longPressTimerRef.current = setTimeout(() => {
+                  setActiveReactionPickerMsgId(msg.id);
+                }, 400);
+              };
+
+              const cancelLongPress = () => {
+                if (longPressTimerRef.current) {
+                  clearTimeout(longPressTimerRef.current);
+                }
+              };
+
               return (
                 <motion.div
                   key={msg.id}
@@ -551,7 +809,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
                     isMe ? 'flex-row-reverse' : 'flex-row'
                   }`}
                 >
-                  <div className={`max-w-[88%] sm:max-w-[78%] space-y-0.5 ${isMe ? 'items-end' : 'items-start'}`}>
+                  <div className={`max-w-[88%] sm:max-w-[78%] space-y-0.5 relative ${isMe ? 'items-end' : 'items-start'}`}>
                     {/* Sender Name in group */}
                     {!isMe && chat.type === 'group' && (
                       <span className="text-[11px] font-bold text-sky-400 pl-1 block">
@@ -559,139 +817,273 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
                       </span>
                     )}
 
-                    {/* Telegram Style Message Bubble with Tail */}
-                    <div
-                      className={`px-3.5 py-2 relative shadow-md text-sm transition-all leading-relaxed ${
-                        isMe
-                          ? 'bg-[#2b5278] text-white rounded-[18px] rounded-br-[4px] after:content-[""] after:absolute after:bottom-0 after:-right-[5px] after:w-0 after:h-0 after:border-l-[7px] after:border-l-[#2b5278] after:border-b-[7px] after:border-b-transparent after:border-t-[7px] after:border-t-transparent'
-                          : 'bg-[#182533] text-slate-100 rounded-[18px] rounded-bl-[4px] border border-slate-700/50 after:content-[""] after:absolute after:bottom-0 after:-left-[5px] after:w-0 after:h-0 after:border-r-[7px] after:border-r-[#182533] after:border-b-[7px] after:border-b-transparent after:border-t-[7px] after:border-t-transparent'
-                      }`}
+                    {/* Floating Emoji Reaction Picker Popover */}
+                    <AnimatePresence>
+                      {activeReactionPickerMsgId === msg.id && (
+                        <>
+                          <div
+                            className="fixed inset-0 z-40 bg-transparent"
+                            onClick={() => setActiveReactionPickerMsgId(null)}
+                          />
+                          <motion.div
+                            initial={{ opacity: 0, scale: 0.8, y: 6 }}
+                            animate={{ opacity: 1, scale: 1, y: 0 }}
+                            exit={{ opacity: 0, scale: 0.8, y: 6 }}
+                            transition={{ type: 'spring', stiffness: 500, damping: 30 }}
+                            className={`absolute z-50 -top-11 ${
+                              isMe ? 'right-2' : 'left-2'
+                            } flex items-center space-x-1 bg-slate-900/95 border border-slate-700/90 rounded-full px-2 py-1 shadow-2xl backdrop-blur-xl`}
+                          >
+                            {['❤️', '👍', '😂', '😮', '😢', '🔥', '🙏', '🎉'].map((emoji) => (
+                              <button
+                                key={emoji}
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  onToggleReaction?.(msg.id, emoji);
+                                  setActiveReactionPickerMsgId(null);
+                                }}
+                                className="text-base sm:text-lg hover:scale-125 active:scale-95 transition-transform p-1 hover:bg-slate-800 rounded-full"
+                              >
+                                {emoji}
+                              </button>
+                            ))}
+                          </motion.div>
+                        </>
+                      )}
+                    </AnimatePresence>
+
+                    {/* Drag-to-reply container with gesture handling */}
+                    <motion.div
+                      drag="x"
+                      dragConstraints={{ left: -70, right: 0 }}
+                      dragElastic={0.15}
+                      dragSnapToOrigin
+                      onDragEnd={(_, info) => {
+                        if (info.offset.x < -40) {
+                          setReplyingTo(msg);
+                          playSendSound();
+                        }
+                      }}
+                      onTouchStart={startLongPress}
+                      onTouchEnd={cancelLongPress}
+                      onTouchMove={cancelLongPress}
+                      onMouseDown={startLongPress}
+                      onMouseUp={cancelLongPress}
+                      onMouseLeave={cancelLongPress}
+                      onContextMenu={(e) => {
+                        e.preventDefault();
+                        setActiveReactionPickerMsgId(msg.id);
+                      }}
+                      className="relative touch-pan-y"
                     >
-                    {/* Reply Context snippet */}
-                    {msg.replyTo && (
+                      {/* Telegram Style Message Bubble with Tail */}
                       <div
-                        className={`mb-1.5 p-2 rounded-lg text-xs border-l-3 ${
+                        className={`px-3.5 py-2 relative shadow-md text-sm transition-all leading-relaxed select-text ${
                           isMe
-                            ? 'bg-black/20 border-sky-300 text-sky-100'
-                            : 'bg-slate-900/80 border-sky-400 text-slate-200'
+                            ? 'bg-[#2b5278] text-white rounded-[18px] rounded-br-[4px] after:content-[""] after:absolute after:bottom-0 after:-right-[5px] after:w-0 after:h-0 after:border-l-[7px] after:border-l-[#2b5278] after:border-b-[7px] after:border-b-transparent after:border-t-[7px] after:border-t-transparent'
+                            : 'bg-[#182533] text-slate-100 rounded-[18px] rounded-bl-[4px] border border-slate-700/50 after:content-[""] after:absolute after:bottom-0 after:-left-[5px] after:w-0 after:h-0 after:border-r-[7px] after:border-r-[#182533] after:border-b-[7px] after:border-b-transparent after:border-t-[7px] after:border-t-transparent'
                         }`}
                       >
-                        <span className="font-bold block text-[11px] text-sky-300">
-                          {msg.replyTo.senderName}
-                        </span>
-                        <span className="truncate block text-[11px] opacity-90">
-                          {msg.replyTo.content}
-                        </span>
-                      </div>
-                    )}
-
-                    {/* Text Message with Inline Telegram Bottom Meta */}
-                    {msg.type === 'text' && (
-                      <div className="whitespace-pre-wrap break-words font-normal text-[13.5px] leading-snug">
-                        <span>{decryptedContent}</span>
-
-                        {/* Inline Telegram Timestamp & Status Ticks */}
-                        <span className="inline-flex items-center space-x-1 float-right ml-2 mt-1 select-none text-[10.5px] opacity-80 shrink-0 leading-none align-baseline">
-                          {msg.selfDestructTimer > 0 && (
-                            <span className="flex items-center space-x-0.5 text-amber-300 mr-0.5">
-                              <Timer className="w-2.5 h-2.5" />
-                              <span>{msg.selfDestructTimer}s</span>
-                            </span>
-                          )}
-                          <span className={isMe ? 'text-sky-200' : 'text-slate-400'}>
-                            {msg.timestamp}
-                          </span>
-                          {isMe && (
-                            <CheckCheck className="w-3.5 h-3.5 text-sky-300 inline-block" />
-                          )}
-                        </span>
-                      </div>
-                    )}
-
-                    {/* Image Message */}
-                    {msg.type === 'image' && msg.attachmentUrl && (
-                      <div className="space-y-1.5">
-                        <img
-                          src={msg.attachmentUrl}
-                          alt={msg.attachmentName || 'Shared image'}
-                          onClick={() => setSelectedImage(msg.attachmentUrl!)}
-                          className="rounded-xl max-h-72 w-full object-cover cursor-pointer hover:opacity-95 transition-opacity border border-white/10"
-                        />
-                        <div className="flex items-center justify-end space-x-1 text-[10.5px] opacity-80">
-                          <span className={isMe ? 'text-sky-200' : 'text-slate-400'}>
-                            {msg.timestamp}
-                          </span>
-                          {isMe && <CheckCheck className="w-3.5 h-3.5 text-sky-300" />}
-                        </div>
-                      </div>
-                    )}
-
-                    {/* Voice Note Message */}
-                    {msg.type === 'voice' && (
-                      <div className="space-y-1">
-                        <div className="flex items-center space-x-3 py-1">
-                          <button
-                            onClick={() => handleTogglePlayVoice(msg)}
-                            className={`w-9 h-9 rounded-full flex items-center justify-center transition-transform active:scale-95 shadow-md ${
-                              isMe ? 'bg-sky-400 text-slate-950 font-bold' : 'bg-sky-500 text-white font-bold'
+                        {/* Reply Context snippet */}
+                        {msg.replyTo && (
+                          <div
+                            className={`mb-1.5 p-2 rounded-lg text-xs border-l-3 ${
+                              isMe
+                                ? 'bg-black/20 border-sky-300 text-sky-100'
+                                : 'bg-slate-900/80 border-sky-400 text-slate-200'
                             }`}
                           >
-                            {playingVoiceId === msg.id ? (
-                              <Pause className="w-4 h-4 fill-current" />
-                            ) : (
-                              <Play className="w-4 h-4 fill-current ml-0.5" />
-                            )}
-                          </button>
+                            <span className="font-bold block text-[11px] text-sky-300">
+                              {msg.replyTo.senderName}
+                            </span>
+                            <span className="truncate block text-[11px] opacity-90">
+                              {msg.replyTo.content}
+                            </span>
+                          </div>
+                        )}
 
-                          <div className="flex-1 space-y-1 min-w-[130px]">
-                            <div className="flex items-center space-x-1 h-5">
-                              {generateWaveformData(16).map((h, i) => (
-                                <div
-                                  key={i}
-                                  style={{ height: `${h}%` }}
-                                  className={`w-1 rounded-full transition-all ${
-                                    playingVoiceId === msg.id
-                                      ? 'bg-amber-300 animate-pulse'
-                                      : isMe
-                                      ? 'bg-white/80'
-                                      : 'bg-emerald-400/80'
-                                  }`}
-                                />
-                              ))}
+                        {/* Text Message with Stable Bottom Meta */}
+                        {msg.type === 'text' && (
+                          <div className="flex flex-col">
+                            <div className="whitespace-pre-wrap break-words font-normal text-[13.5px] leading-snug pr-1">
+                              {(() => {
+                                const urlRegex = /(https?:\/\/[^\s]+)/g;
+                                const parts = decryptedContent.split(urlRegex);
+                                return parts.map((part, i) => {
+                                  if (part.match(/^https?:\/\//i)) {
+                                    return (
+                                      <a
+                                        key={i}
+                                        href={part}
+                                        onClick={(e) => {
+                                          e.preventDefault();
+                                          e.stopPropagation();
+                                          if (onOpenUrl) {
+                                            onOpenUrl(part);
+                                          } else {
+                                            window.open(part, '_blank', 'noopener,noreferrer');
+                                          }
+                                        }}
+                                        className="text-sky-300 hover:text-sky-100 underline font-medium inline-flex items-center space-x-0.5 break-all cursor-pointer"
+                                        title="Open Link in In-App Browser"
+                                      >
+                                        <span>{part}</span>
+                                        <ExternalLink className="w-3 h-3 inline ml-0.5 opacity-80" />
+                                      </a>
+                                    );
+                                  }
+                                  return <span key={i}>{part}</span>;
+                                });
+                              })()}
                             </div>
-                            <div className="flex items-center justify-between text-[10px] opacity-80">
-                              <span>Voice Note</span>
-                              <span>{formatDuration(msg.voiceDuration || 10)}</span>
+                            <div className="flex items-center justify-end space-x-1 mt-1 text-[10.5px] opacity-80 shrink-0 select-none">
+                              {msg.selfDestructTimer > 0 && (
+                                <span className="flex items-center space-x-0.5 text-amber-300 mr-1">
+                                  <Timer className="w-2.5 h-2.5" />
+                                  <span>{msg.selfDestructTimer}s</span>
+                                </span>
+                              )}
+                              <span className={isMe ? 'text-sky-200' : 'text-slate-400'}>
+                                {msg.timestamp}
+                              </span>
+                              {isMe && (
+                                <CheckCheck className="w-3.5 h-3.5 text-sky-300 shrink-0 inline-block" />
+                              )}
                             </div>
                           </div>
-                        </div>
-                        <div className="flex items-center justify-end space-x-1 text-[10.5px] opacity-80">
-                          <span className={isMe ? 'text-sky-200' : 'text-slate-400'}>
-                            {msg.timestamp}
-                          </span>
-                          {isMe && <CheckCheck className="w-3.5 h-3.5 text-sky-300" />}
-                        </div>
-                      </div>
-                    )}
+                        )}
 
-                    {/* File Attachment Message */}
-                    {msg.type === 'file' && (
-                      <div className="space-y-1">
-                        <div className="flex items-center space-x-3 p-2 rounded-xl bg-black/20 border border-white/10">
-                          <FileText className="w-5 h-5 text-emerald-400 shrink-0" />
-                          <div className="flex-1 min-w-0">
-                            <p className="font-semibold text-xs truncate">{msg.attachmentName || 'Attachment'}</p>
-                            <p className="text-[10px] opacity-70">{msg.attachmentSize || 'Cloud File'}</p>
+                        {/* Image Message */}
+                        {msg.type === 'image' && msg.attachmentUrl && (
+                          <div className="space-y-1.5 relative group/img">
+                            <img
+                              src={msg.attachmentUrl}
+                              alt={msg.attachmentName || 'Shared image'}
+                              onClick={() => setSelectedImage(msg.attachmentUrl!)}
+                              className="rounded-xl max-h-72 w-full object-cover cursor-pointer hover:opacity-95 transition-opacity border border-white/10"
+                            />
+                            <a
+                              href={msg.attachmentUrl}
+                              download={msg.attachmentName || 'liquidchat-image.png'}
+                              onClick={(e) => e.stopPropagation()}
+                              className="absolute top-2 right-2 p-1.5 rounded-full bg-slate-950/75 hover:bg-slate-900 text-slate-200 hover:text-sky-300 backdrop-blur-md opacity-0 group-hover/img:opacity-100 transition-opacity shadow-lg border border-white/15"
+                              title="Download Image"
+                            >
+                              <Download className="w-3.5 h-3.5" />
+                            </a>
+                            <div className="flex items-center justify-end space-x-1 mt-1 text-[10.5px] opacity-80 shrink-0 select-none">
+                              <span className={isMe ? 'text-sky-200' : 'text-slate-400'}>
+                                {msg.timestamp}
+                              </span>
+                              {isMe && <CheckCheck className="w-3.5 h-3.5 text-sky-300 shrink-0" />}
+                            </div>
                           </div>
-                        </div>
-                        <div className="flex items-center justify-end space-x-1 text-[10.5px] opacity-80">
-                          <span className={isMe ? 'text-sky-200' : 'text-slate-400'}>
-                            {msg.timestamp}
-                          </span>
-                          {isMe && <CheckCheck className="w-3.5 h-3.5 text-sky-300" />}
-                        </div>
+                        )}
+
+                        {/* Voice Note Message */}
+                        {msg.type === 'voice' && (
+                          <div className="space-y-1">
+                            <div className="flex items-center space-x-3 py-1">
+                              <button
+                                onClick={() => handleTogglePlayVoice(msg)}
+                                className={`w-9 h-9 rounded-full flex items-center justify-center transition-transform active:scale-95 shadow-md ${
+                                  isMe ? 'bg-sky-400 text-slate-950 font-bold' : 'bg-sky-500 text-white font-bold'
+                                }`}
+                              >
+                                {playingVoiceId === msg.id ? (
+                                  <Pause className="w-4 h-4 fill-current" />
+                                ) : (
+                                  <Play className="w-4 h-4 fill-current ml-0.5" />
+                                )}
+                              </button>
+
+                              <div className="flex-1 space-y-1 min-w-[130px]">
+                                <div className="flex items-center space-x-1 h-5">
+                                  {generateWaveformData(16).map((h, i) => (
+                                    <div
+                                      key={i}
+                                      style={{ height: `${h}%` }}
+                                      className={`w-1 rounded-full transition-all ${
+                                        playingVoiceId === msg.id
+                                          ? 'bg-amber-300 animate-pulse'
+                                          : isMe
+                                          ? 'bg-white/80'
+                                          : 'bg-emerald-400/80'
+                                      }`}
+                                    />
+                                  ))}
+                                </div>
+                                <div className="flex items-center justify-between text-[10px] opacity-80">
+                                  <span>Voice Note</span>
+                                  <span>{formatDuration(msg.voiceDuration || 10)}</span>
+                                </div>
+                              </div>
+                            </div>
+                            <div className="flex items-center justify-end space-x-1 mt-1 text-[10.5px] opacity-80 shrink-0 select-none">
+                              <span className={isMe ? 'text-sky-200' : 'text-slate-400'}>
+                                {msg.timestamp}
+                              </span>
+                              {isMe && <CheckCheck className="w-3.5 h-3.5 text-sky-300 shrink-0" />}
+                            </div>
+                          </div>
+                        )}
+
+                        {/* File Attachment Message */}
+                        {msg.type === 'file' && (
+                          <div className="space-y-1">
+                            <div className="flex items-center space-x-3 p-2 rounded-xl bg-black/20 border border-white/10">
+                              <FileText className="w-5 h-5 text-emerald-400 shrink-0" />
+                              <div className="flex-1 min-w-0">
+                                <p className="font-semibold text-xs truncate">{msg.attachmentName || 'Attachment'}</p>
+                                <p className="text-[10px] opacity-70">{msg.attachmentSize || 'Cloud File'}</p>
+                              </div>
+                            </div>
+                            <div className="flex items-center justify-end space-x-1 mt-1 text-[10.5px] opacity-80 shrink-0 select-none">
+                              <span className={isMe ? 'text-sky-200' : 'text-slate-400'}>
+                                {msg.timestamp}
+                              </span>
+                              {isMe && <CheckCheck className="w-3.5 h-3.5 text-sky-300 shrink-0" />}
+                            </div>
+                          </div>
+                        )}
                       </div>
-                    )}
+
+                      {/* Floating Reaction Badges with Spring Animation */}
+                      {msg.reactions && msg.reactions.length > 0 && (
+                        <div
+                          className={`absolute -bottom-2.5 ${
+                            isMe ? 'right-2' : 'left-2'
+                          } flex items-center space-x-1 z-20`}
+                        >
+                          {msg.reactions.map((r) => {
+                            const userReacted = r.users.includes(currentUser.id);
+                            return (
+                              <motion.button
+                                key={r.emoji}
+                                initial={{ scale: 0, opacity: 0 }}
+                                animate={{ scale: 1, opacity: 1 }}
+                                exit={{ scale: 0, opacity: 0 }}
+                                transition={{ type: 'spring', stiffness: 450, damping: 22 }}
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  onToggleReaction?.(msg.id, r.emoji);
+                                }}
+                                className={`flex items-center space-x-1 px-2 py-0.5 rounded-full text-[11px] font-semibold shadow-lg transition-all active:scale-90 border select-none ${
+                                  userReacted
+                                    ? 'bg-sky-500/30 border-sky-400 text-sky-200 backdrop-blur-md'
+                                    : 'bg-slate-900/95 border-slate-700 text-slate-300 hover:bg-slate-800 backdrop-blur-md'
+                                }`}
+                              >
+                                <span>{r.emoji}</span>
+                                {r.users.length > 1 && (
+                                  <span className="text-[10px] font-mono font-bold">{r.users.length}</span>
+                                )}
+                              </motion.button>
+                            );
+                          })}
+                        </div>
+                      )}
+                    </motion.div>
                   </div>
 
                   {/* Message Quick Actions on Hover */}
@@ -715,10 +1107,9 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
                       <Trash2 className="w-3.5 h-3.5" />
                     </button>
                   </div>
-                </div>
-              </motion.div>
-            );
-          })}
+                </motion.div>
+              );
+            })}
         </AnimatePresence>
         <div ref={messagesEndRef} />
       </div>
@@ -792,113 +1183,231 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
         </footer>
       ) : (
         <footer className="p-3 bg-slate-950/95 border-t border-slate-800/80 backdrop-blur-xl shrink-0 z-20">
-          <div className="flex items-center space-x-2 bg-slate-900/90 border border-slate-800 rounded-full px-3 py-1.5 shadow-2xl">
-            <input
-              type="file"
-              ref={fileInputRef}
-              onChange={handleImageUpload}
-              accept="image/*"
-              className="hidden"
-            />
-
-            {/* Emoji Toggle Icon */}
-            <button
-              onClick={() => setInputText((prev) => prev + ' 😊')}
-              className="p-2 text-slate-400 hover:text-slate-200 transition-colors"
-              title="Emoji Picker"
-            >
-              <Smile className="w-5 h-5" />
-            </button>
-
-            {/* Attach Paperclip Icon */}
-            <button
-              onClick={() => fileInputRef.current?.click()}
-              className="p-2 text-slate-400 hover:text-slate-200 transition-colors"
-              title="Attach File or Image"
-            >
-              <Paperclip className="w-5 h-5 rotate-45" />
-            </button>
-
-            {/* Main Input Field */}
-            <div className="flex-1 relative">
-              {isRecordingVoice ? (
-                <div className="flex items-center justify-between text-xs px-2 py-1">
-                  <div className="flex items-center space-x-2">
-                    <span className="w-3 h-3 rounded-full bg-rose-500 animate-ping" />
-                    <span className="font-mono text-sky-400 font-bold">
-                      Recording... {formatDuration(recordingSeconds)}
-                    </span>
-                  </div>
-                  <div className="flex items-center space-x-2">
-                    <button
-                      onClick={() => setIsRecordingVoice(false)}
-                      className="px-2.5 py-1 rounded-full bg-slate-800 text-slate-300 text-[11px]"
-                    >
-                      Cancel
-                    </button>
-                    <button
-                      onClick={handleStopAndSendVoice}
-                      className="px-3 py-1 rounded-full bg-sky-500 text-white font-bold text-[11px]"
-                    >
-                      Send
-                    </button>
-                  </div>
-                </div>
-              ) : (
-                <input
-                  type="text"
-                  value={inputText}
-                  onChange={(e) => setInputText(e.target.value)}
-                  onKeyDown={handleKeyPress}
-                  placeholder="Message"
-                  className="w-full bg-transparent border-none text-slate-100 placeholder-slate-400 text-sm focus:outline-none px-2 font-normal"
-                />
-              )}
-            </div>
-
-            {/* Vault Picker trigger */}
-            <button
-              onClick={() => setShowVaultPicker(true)}
-              className="p-2 text-slate-400 hover:text-slate-200 transition-colors hidden sm:block"
-              title="Attach from Vault"
-            >
-              <HardDrive className="w-4 h-4" />
-            </button>
-
-            {/* Circular Sky-Blue Voice / Send Button matching screenshot 5 */}
-            {inputText.trim() ? (
+          {recordedVoicePreview ? (
+            <div className="flex items-center space-x-2 bg-slate-900/90 border border-sky-500/40 rounded-full px-3 py-1.5 shadow-2xl w-full animate-in fade-in slide-in-from-bottom-2 duration-200">
+              {/* Trash button to discard preview */}
               <button
-                onClick={handleSend}
+                onClick={() => {
+                  stopPreviewPlayback();
+                  setRecordedVoicePreview(null);
+                }}
+                className="p-2 text-rose-400 hover:text-rose-300 hover:bg-rose-500/10 rounded-full transition-colors shrink-0"
+                title="Discard Voice Note"
+              >
+                <Trash2 className="w-4 h-4" />
+              </button>
+
+              {/* Voice Playback Player Pill */}
+              <div className="flex-1 flex items-center space-x-2 bg-slate-800/80 rounded-full px-3 py-1.5 border border-slate-700/60 min-w-0">
+                <button
+                  onClick={handleTogglePlayPreview}
+                  className="p-1.5 rounded-full bg-sky-500 hover:bg-sky-400 text-white transition-all shrink-0 active:scale-95 shadow-xs"
+                  title={isPreviewPlaying ? 'Pause Preview' : 'Play Preview'}
+                >
+                  {isPreviewPlaying ? (
+                    <Pause className="w-3.5 h-3.5 fill-current" />
+                  ) : (
+                    <Play className="w-3.5 h-3.5 fill-current ml-0.5" />
+                  )}
+                </button>
+
+                {/* Waveform Visualization Bars */}
+                <div className="flex-1 flex items-center space-x-1 h-5 overflow-hidden">
+                  {generateWaveformData(recordedVoicePreview.duration * 10)
+                    .slice(0, 18)
+                    .map((height, i) => {
+                      const isPlayed =
+                        i / 18 <= previewProgress / (recordedVoicePreview.duration || 1);
+                      return (
+                        <span
+                          key={i}
+                          style={{ height: `${Math.max(20, height)}%` }}
+                          className={`w-1 rounded-full transition-colors duration-150 ${
+                            isPlayed ? 'bg-sky-400' : 'bg-slate-600'
+                          } ${isPreviewPlaying ? 'animate-pulse' : ''}`}
+                        />
+                      );
+                    })}
+                </div>
+
+                {/* Timer Duration */}
+                <span className="font-mono text-[11px] font-semibold text-slate-300 shrink-0">
+                  {formatDuration(Math.floor(previewProgress))} / {formatDuration(recordedVoicePreview.duration)}
+                </span>
+
+                {/* Speed Toggle Button (1x, 1.5x, 2x) */}
+                <button
+                  onClick={cyclePreviewSpeed}
+                  className="px-2 py-0.5 rounded-full bg-slate-700/80 hover:bg-slate-700 text-sky-300 hover:text-sky-200 text-[10.5px] font-mono font-bold transition-colors shrink-0 border border-slate-600/50 active:scale-95"
+                  title="Change Playback Speed"
+                >
+                  {previewPlaybackSpeed}x
+                </button>
+              </div>
+
+              {/* Send Voice Note Button */}
+              <button
+                onClick={handleSendRecordedVoicePreview}
                 className="p-2.5 rounded-full bg-sky-500 hover:bg-sky-600 text-white shadow-lg shadow-sky-500/30 transition-all active:scale-95 shrink-0"
-                title="Send Message"
+                title="Send Recorded Voice Note"
               >
                 <Send className="w-4 h-4 fill-current" />
               </button>
-            ) : (
+            </div>
+          ) : (
+            <div className="flex items-center space-x-2 bg-slate-900/90 border border-slate-800 rounded-full px-3 py-1.5 shadow-2xl">
+              <input
+                type="file"
+                ref={fileInputRef}
+                onChange={handleImageUpload}
+                accept="image/*"
+                className="hidden"
+              />
+
+              {/* Emoji Toggle Icon */}
               <button
-                onClick={handleStartVoiceRecording}
-                className="p-2.5 rounded-full bg-sky-500 hover:bg-sky-600 text-white shadow-lg shadow-sky-500/30 transition-all active:scale-95 shrink-0"
-                title="Record Voice Note"
+                onClick={() => setInputText((prev) => prev + ' 😊')}
+                className="p-2 text-slate-400 hover:text-slate-200 transition-colors"
+                title="Emoji Picker"
               >
-                <Mic className="w-4 h-4 fill-current" />
+                <Smile className="w-5 h-5" />
               </button>
-            )}
-          </div>
+
+              {/* Attach Paperclip Icon */}
+              <button
+                onClick={() => fileInputRef.current?.click()}
+                className="p-2 text-slate-400 hover:text-slate-200 transition-colors"
+                title="Attach File or Image"
+              >
+                <Paperclip className="w-5 h-5 rotate-45" />
+              </button>
+
+              {/* Main Input Field */}
+              <div className="flex-1 relative">
+                {isRecordingVoice ? (
+                  <div className="flex items-center justify-between text-xs px-2 py-1">
+                    <div className="flex items-center space-x-2">
+                      <span className="w-3 h-3 rounded-full bg-rose-500 animate-ping" />
+                      <span className="font-mono text-sky-400 font-bold">
+                        Recording... {formatDuration(recordingSeconds)}
+                      </span>
+                    </div>
+                    <div className="flex items-center space-x-2">
+                      <button
+                        onClick={handleCancelVoiceRecording}
+                        className="p-1.5 rounded-full text-slate-400 hover:text-rose-400 hover:bg-slate-800 transition-colors"
+                        title="Cancel Recording"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                      <button
+                        onClick={handleStopVoiceToPreview}
+                        className="px-3 py-1 rounded-full bg-sky-500 hover:bg-sky-600 text-white font-bold text-[11px] flex items-center space-x-1 shadow-md shadow-sky-500/20"
+                        title="Stop & Preview"
+                      >
+                        <Square className="w-3 h-3 fill-current" />
+                        <span>Stop & Preview</span>
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  <input
+                    type="text"
+                    value={inputText}
+                    onChange={(e) => setInputText(e.target.value)}
+                    onKeyDown={handleKeyPress}
+                    placeholder="Message"
+                    className="w-full bg-transparent border-none text-slate-100 placeholder-slate-400 text-sm focus:outline-none px-2 font-normal"
+                  />
+                )}
+              </div>
+
+              {/* Vault Picker trigger */}
+              <button
+                onClick={() => setShowVaultPicker(true)}
+                className="p-2 text-slate-400 hover:text-slate-200 transition-colors hidden sm:block"
+                title="Attach from Vault"
+              >
+                <HardDrive className="w-4 h-4" />
+              </button>
+
+              {/* Circular Sky-Blue Voice / Send Button matching screenshot 5 */}
+              {inputText.trim() ? (
+                <button
+                  onClick={handleSend}
+                  className="p-2.5 rounded-full bg-sky-500 hover:bg-sky-600 text-white shadow-lg shadow-sky-500/30 transition-all active:scale-95 shrink-0"
+                  title="Send Message"
+                >
+                  <Send className="w-4 h-4 fill-current" />
+                </button>
+              ) : isRecordingVoice ? (
+                <button
+                  onClick={handleStopVoiceToPreview}
+                  className="p-2.5 rounded-full bg-sky-500 hover:bg-sky-600 text-white shadow-lg shadow-sky-500/30 transition-all active:scale-95 shrink-0"
+                  title="Finish & Preview Voice Note"
+                >
+                  <Check className="w-4 h-4" />
+                </button>
+              ) : (
+                <button
+                  onClick={handleStartVoiceRecording}
+                  className="p-2.5 rounded-full bg-sky-500 hover:bg-sky-600 text-white shadow-lg shadow-sky-500/30 transition-all active:scale-95 shrink-0"
+                  title="Record Voice Note"
+                >
+                  <Mic className="w-4 h-4 fill-current" />
+                </button>
+              )}
+            </div>
+          )}
         </footer>
+      )}
+
+      {/* Image Editor Modal (Crop, Draw, Arrow, Download before send) */}
+      {pendingImage && (
+        <ImageEditorModal
+          imageUrl={pendingImage.url}
+          fileName={pendingImage.fileName}
+          onSave={(editedDataUrl) => {
+            onSendMessage(chat.id, 'Shared an image', 'image', {
+              attachmentUrl: editedDataUrl,
+              attachmentName: pendingImage.fileName,
+              attachmentSize: pendingImage.fileSize,
+            });
+            setPendingImage(null);
+          }}
+          onClose={() => setPendingImage(null)}
+        />
       )}
 
       {/* Lightbox Modal */}
       {selectedImage && (
-        <div
-          onClick={() => setSelectedImage(null)}
-          className="fixed inset-0 bg-slate-950/95 z-50 p-6 flex flex-col justify-center items-center cursor-pointer"
-        >
+        <div className="fixed inset-0 bg-slate-950/95 z-50 p-4 sm:p-6 flex flex-col justify-between items-center animate-in fade-in duration-200">
+          <div className="w-full flex justify-between items-center z-10">
+            <span className="text-xs text-slate-400 font-mono">Image View</span>
+            <div className="flex items-center space-x-2">
+              <a
+                href={selectedImage}
+                download="liquidchat-image.png"
+                className="p-2 rounded-xl bg-slate-800 text-sky-400 hover:bg-slate-700 hover:text-sky-300 transition-colors flex items-center space-x-1.5 text-xs font-semibold px-3 border border-slate-700/60"
+              >
+                <Download className="w-4 h-4" />
+                <span>Download</span>
+              </a>
+              <button
+                onClick={() => setSelectedImage(null)}
+                className="p-2 rounded-full bg-slate-800 hover:bg-slate-700 text-slate-300 transition-colors"
+                title="Close"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+          </div>
           <img
             src={selectedImage}
             alt="Full view"
-            className="max-w-full max-h-[85vh] rounded-3xl shadow-2xl object-contain"
+            className="max-w-full max-h-[80vh] rounded-2xl shadow-2xl object-contain my-auto border border-slate-800"
           />
-          <p className="text-xs text-slate-400 mt-4">Click anywhere to close preview</p>
+          <p className="text-xs text-slate-400">Click close or press ESC to return</p>
         </div>
       )}
 

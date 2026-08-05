@@ -16,6 +16,11 @@ export type MessageType = 'text' | 'image' | 'voice' | 'file' | 'system';
 
 export type MessageDeliveryStatus = 'sent' | 'delivered' | 'read';
 
+export interface MessageReaction {
+  emoji: string;
+  users: string[]; // User IDs who reacted with this emoji
+}
+
 export interface Message {
   id: string;
   chatId: string;
@@ -38,6 +43,7 @@ export interface Message {
     senderName: string;
     content: string;
   };
+  reactions?: MessageReaction[];
 }
 
 export type ChatType = 'direct' | 'group' | 'ai';

@@ -24,7 +24,8 @@ import {
   Droplets,
   Layers,
   Radio,
-  ArrowLeft
+  ArrowLeft,
+  Globe
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { LiquidNavBar } from './LiquidNavBar';
@@ -47,6 +48,7 @@ interface SidebarProps {
   setTheme: (theme: 'dark' | 'light' | 'emerald') => void;
   onGoBack?: () => void;
   canGoBack?: boolean;
+  onOpenBrowser?: () => void;
 }
 
 export const Sidebar: React.FC<SidebarProps> = ({
@@ -66,6 +68,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
   setTheme,
   onGoBack,
   canGoBack,
+  onOpenBrowser,
 }) => {
   const [searchQuery, setSearchQuery] = useState('');
   const [filter, setFilter] = useState<'all' | 'unread' | 'rooms' | 'direct' | 'ai'>('all');
@@ -184,11 +187,14 @@ export const Sidebar: React.FC<SidebarProps> = ({
       {/* Dynamic Top Header Bar */}
       <div className="p-3.5 border-b border-gray-200 dark:border-slate-800 flex items-center justify-between bg-white/90 dark:bg-slate-900/90 backdrop-blur-md z-30">
         <div className="flex items-center space-x-2.5">
-          {onGoBack && canGoBack && (
+          {onGoBack && (canGoBack || menuOpen || activeTab !== 'chats' || activeChatId !== null) && (
             <button
-              onClick={onGoBack}
+              onClick={() => {
+                if (menuOpen) setMenuOpen(false);
+                onGoBack();
+              }}
               className="p-2 rounded-xl bg-gray-100 dark:bg-slate-800 hover:bg-gray-200 dark:hover:bg-slate-700 text-gray-700 dark:text-slate-200 transition-colors shrink-0 shadow-xs active:scale-95"
-              title="Go Back"
+              title="Back to Chats"
             >
               <ArrowLeft className="w-4 h-4 text-blue-500" />
             </button>
@@ -262,6 +268,25 @@ export const Sidebar: React.FC<SidebarProps> = ({
       {menuOpen && (
         <div className="absolute inset-x-0 top-[65px] bottom-0 bg-white/95 dark:bg-slate-900/95 backdrop-blur-md z-40 p-4 flex flex-col justify-between overflow-y-auto border-b border-gray-200 dark:border-slate-800 shadow-xl animate-in fade-in zoom-in-95 duration-200">
           <div className="space-y-4">
+            {/* Navigation Back Button inside Drawer to return to Chat Interface */}
+            {onGoBack && (
+              <button
+                onClick={() => {
+                  setMenuOpen(false);
+                  onGoBack();
+                }}
+                className="w-full p-3 rounded-2xl bg-blue-600 hover:bg-blue-500 text-white flex items-center justify-between font-bold text-xs transition-colors shadow-md border border-blue-400/40"
+              >
+                <div className="flex items-center space-x-2.5">
+                  <ArrowLeft className="w-4 h-4 text-white" />
+                  <span>Back to Chat Interface</span>
+                </div>
+                <span className="text-[10px] uppercase tracking-wider font-semibold opacity-90 bg-white/20 px-2.5 py-0.5 rounded-full">
+                  CHATS
+                </span>
+              </button>
+            )}
+
             {/* User Profile Card */}
             <div
               onClick={() => {
@@ -329,6 +354,24 @@ export const Sidebar: React.FC<SidebarProps> = ({
                   </button>
                 );
               })}
+
+              {onOpenBrowser && (
+                <button
+                  onClick={() => {
+                    setMenuOpen(false);
+                    onOpenBrowser();
+                  }}
+                  className="w-full p-2.5 rounded-xl flex items-center justify-between font-bold text-xs text-sky-400 bg-sky-500/10 hover:bg-sky-500/20 border border-sky-500/30 transition-colors mt-2"
+                >
+                  <div className="flex items-center space-x-2.5">
+                    <Globe className="w-4 h-4 text-sky-400" />
+                    <span>Inbuilt Search Engine</span>
+                  </div>
+                  <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-sky-400/20 text-sky-300">
+                    BROWSER
+                  </span>
+                </button>
+              )}
             </div>
 
             {/* Passkey & Security */}

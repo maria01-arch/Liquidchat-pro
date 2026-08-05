@@ -15,6 +15,7 @@ import { NotificationCenter } from './components/NotificationCenter';
 import { UserProfileModal } from './components/UserProfileModal';
 import { ContactProfileModal } from './components/ContactProfileModal';
 import { LiquidNavBar } from './components/LiquidNavBar';
+import { InAppBrowserModal } from './components/InAppBrowserModal';
 
 import { RoomsTab } from './components/RoomsTab';
 import { CallsTab } from './components/CallsTab';
@@ -36,6 +37,33 @@ export default function App() {
   const [activeTab, setActiveTab] = useState<ActiveTab>('chats');
   const [theme, setTheme] = useState<'dark' | 'light' | 'emerald'>('dark');
   const [wallpaper, setWallpaper] = useState<ChatWallpaper>('telegram-doodle');
+
+  // In-App Browser & Search Engine state
+  const [useInAppBrowser, setUseInAppBrowserState] = useState<boolean>(() => {
+    return localStorage.getItem('liquid_use_in_app_browser') !== 'false';
+  });
+
+  const setUseInAppBrowser = (val: boolean) => {
+    setUseInAppBrowserState(val);
+    localStorage.setItem('liquid_use_in_app_browser', val ? 'true' : 'false');
+  };
+
+  const [isBrowserOpen, setIsBrowserOpen] = useState<boolean>(false);
+  const [browserInitialUrl, setBrowserInitialUrl] = useState<string | null>(null);
+
+  const handleOpenUrl = (url: string) => {
+    if (useInAppBrowser) {
+      setBrowserInitialUrl(url);
+      setIsBrowserOpen(true);
+    } else {
+      window.open(url, '_blank', 'noopener,noreferrer');
+    }
+  };
+
+  const handleOpenBrowser = () => {
+    setBrowserInitialUrl(null);
+    setIsBrowserOpen(true);
+  };
 
   // Smart Navigation Stack with Remembrance & Touch Swiping
   type NavHistoryItem = { tab: ActiveTab; activeChatId: string | null };
@@ -66,25 +94,20 @@ export default function App() {
 
   const handleGoBack = () => {
     setSlideDirection('right');
-    if (activeTab === 'chats' && activeChatId !== null) {
+    if (activeChatId !== null) {
       setActiveChatId(null);
       return;
     }
 
-    if (navHistory.length > 0) {
-      const previous = navHistory[navHistory.length - 1];
-      setNavHistory((prev) => prev.slice(0, -1));
-      setActiveTab(previous.tab);
-      setActiveChatId(previous.activeChatId);
-    } else if (activeTab !== 'chats') {
-      setActiveTab('chats');
-      setActiveChatId(null);
-    }
+    // Direct back navigation from any menu/tab to the chat interface
+    setActiveTab('chats');
+    setActiveChatId(null);
+    setNavHistory([]);
   };
 
   const handleNextTab = () => {
     const currentIndex = TABS_ORDER.indexOf(activeTab);
-    if (currentIndex < TABS_ORDER.length - 1) {
+    if (currentIndex !== -1 && currentIndex < TABS_ORDER.length - 1) {
       const nextTab = TABS_ORDER[currentIndex + 1];
       navigateTo(nextTab, null, 'left');
     }
@@ -98,56 +121,77 @@ export default function App() {
     }
   };
 
-  const handleTouchStart = (e: React.TouchEvent) => {
-    const target = e.target as HTMLElement;
-    if (
-      target.tagName === 'INPUT' ||
-      target.tagName === 'TEXTAREA' ||
-      target.tagName === 'BUTTON' ||
-      target.closest('button') ||
-      target.closest('input') ||
-      target.isContentEditable
-    ) {
-      return;
-    }
-
-    if (e.touches.length === 1) {
-      touchStartRef.current = {
-        x: e.touches[0].clientX,
-        y: e.touches[0].clientY,
-        time: Date.now(),
-      };
-    }
+  const isInputField = (target: HTMLElement | null): boolean => {
+    if (!target) return false;
+    const tag = target.tagName;
+    return (
+      tag === 'INPUT' ||
+      tag === 'TEXTAREA' ||
+      tag === 'SELECT' ||
+      target.isContentEditable ||
+      Boolean(target.closest('input, textarea, select, [contenteditable="true"]'))
+    );
   };
 
-  const handleTouchEnd = (e: React.TouchEvent) => {
+  const handleStartGesture = (clientX: number, clientY: number, target: HTMLElement) => {
+    if (isInputField(target)) return;
+    touchStartRef.current = {
+      x: clientX,
+      y: clientY,
+      time: Date.now(),
+    };
+  };
+
+  const handleEndGesture = (clientX: number, clientY: number) => {
     if (!touchStartRef.current) return;
-    const touchEnd = e.changedTouches[0];
-    const deltaX = touchEnd.clientX - touchStartRef.current.x;
-    const deltaY = touchEnd.clientY - touchStartRef.current.y;
+    const deltaX = clientX - touchStartRef.current.x;
+    const deltaY = clientY - touchStartRef.current.y;
     const deltaTime = Date.now() - touchStartRef.current.time;
 
     touchStartRef.current = null;
 
-    // Must be a horizontal gesture (abs(deltaX) > 35 and abs(deltaX) > 1.2 * abs(deltaY)) within reasonable time (< 600ms)
-    if (Math.abs(deltaX) > 35 && Math.abs(deltaX) > Math.abs(deltaY) * 1.2 && deltaTime < 600) {
-      if (activeChatId !== null) {
-        // Inside an active chat window
-        if (deltaX > 0) {
-          // Drag finger right -> Swipe left-to-right closes DM and goes back to chat list
+    // Minimum drag/swipe threshold: abs(deltaX) >= 30, horizontal dominance (deltaX > 1.1 * deltaY), completed within 750ms
+    if (Math.abs(deltaX) >= 30 && Math.abs(deltaX) > Math.abs(deltaY) * 1.1 && deltaTime < 750) {
+      if (deltaX > 0) {
+        // Dragged LEFT to RIGHT (Finger/cursor moves right)
+        if (activeChatId !== null) {
+          // Inside a DM -> close chat view and return to chat list
           handleGoBack();
-        }
-        // deltaX < 0 (drag right-to-left inside chat) does NOTHING
-      } else {
-        // On main tabs list
-        if (deltaX < 0) {
-          // Drag finger left -> Swiped left to Next Tab
-          handleNextTab();
         } else {
-          // Drag finger right -> Swiped right to Prev Tab
+          // On main tab screen -> navigate to previous tab sequentially (Settings -> Contacts -> Calls -> Rooms -> Chats)
           handlePrevTab();
         }
+      } else {
+        // Dragged RIGHT to LEFT (Finger/cursor moves left)
+        if (activeChatId === null) {
+          // On main tab screen -> navigate to next tab sequentially (Chats -> Rooms -> Calls -> Contacts -> Settings)
+          handleNextTab();
+        }
       }
+    }
+  };
+
+  const handleTouchStart = (e: React.TouchEvent) => {
+    if (e.touches.length === 1) {
+      handleStartGesture(e.touches[0].clientX, e.touches[0].clientY, e.target as HTMLElement);
+    }
+  };
+
+  const handleTouchEnd = (e: React.TouchEvent) => {
+    if (e.changedTouches.length > 0) {
+      handleEndGesture(e.changedTouches[0].clientX, e.changedTouches[0].clientY);
+    }
+  };
+
+  const handlePointerDown = (e: React.PointerEvent) => {
+    if (e.pointerType === 'mouse' || e.pointerType === 'pen') {
+      handleStartGesture(e.clientX, e.clientY, e.target as HTMLElement);
+    }
+  };
+
+  const handlePointerUp = (e: React.PointerEvent) => {
+    if (e.pointerType === 'mouse' || e.pointerType === 'pen') {
+      handleEndGesture(e.clientX, e.clientY);
     }
   };
 
@@ -412,10 +456,43 @@ export default function App() {
 
   // Delete message manually
   const handleDeleteMessage = (msgId: string) => {
+    if (!activeChatId) return;
     setMessages((prev) => ({
       ...prev,
       [activeChatId]: (prev[activeChatId] || []).filter((m) => m.id !== msgId),
     }));
+  };
+
+  // Toggle emoji reaction on message
+  const handleToggleReaction = (chatId: string, messageId: string, emoji: string) => {
+    setMessages((prev) => {
+      const chatMsgs = prev[chatId] || [];
+      const updated = chatMsgs.map((msg) => {
+        if (msg.id !== messageId) return msg;
+        const currentReactions = msg.reactions || [];
+        const existingIndex = currentReactions.findIndex((r) => r.emoji === emoji);
+
+        let newReactions = [...currentReactions];
+        if (existingIndex > -1) {
+          const rx = newReactions[existingIndex];
+          const hasUser = rx.users.includes(currentUser.id);
+          if (hasUser) {
+            const nextUsers = rx.users.filter((u) => u !== currentUser.id);
+            if (nextUsers.length === 0) {
+              newReactions.splice(existingIndex, 1);
+            } else {
+              newReactions[existingIndex] = { ...rx, users: nextUsers };
+            }
+          } else {
+            newReactions[existingIndex] = { ...rx, users: [...rx.users, currentUser.id] };
+          }
+        } else {
+          newReactions.push({ emoji, users: [currentUser.id] });
+        }
+        return { ...msg, reactions: newReactions };
+      });
+      return { ...prev, [chatId]: updated };
+    });
   };
 
   // Clear all messages in active chat
@@ -566,11 +643,13 @@ export default function App() {
           : 'bg-[#F3F4F6] text-gray-900'
       }`}
     >
-      {/* Main Container Layout (Full 100vh without top navbar) with Swipe Gesture Support */}
+      {/* Main Container Layout (Full 100vh without top navbar) with Swipe & Drag Gesture Support */}
       <div
         onTouchStart={handleTouchStart}
         onTouchEnd={handleTouchEnd}
-        className="flex-1 flex overflow-hidden relative h-full"
+        onPointerDown={handlePointerDown}
+        onPointerUp={handlePointerUp}
+        className="flex-1 flex overflow-hidden relative h-full select-none"
       >
         {/* Sidebar */}
         <div
@@ -599,6 +678,7 @@ export default function App() {
             setTheme={setTheme}
             onGoBack={handleGoBack}
             canGoBack={navHistory.length > 0 || activeChatId !== null || activeTab !== 'chats'}
+            onOpenBrowser={handleOpenBrowser}
           />
         </div>
 
@@ -637,6 +717,7 @@ export default function App() {
                   vaultFiles={vaultFiles}
                   onSaveToVault={handleUploadVaultFile}
                   onDeleteMessage={handleDeleteMessage}
+                  onToggleReaction={(messageId, emoji) => handleToggleReaction(activeChat.id, messageId, emoji)}
                   onClearChat={handleClearChat}
                   onBackToList={() => handleGoBack()}
                   onStartCall={(isVideo) => {
@@ -648,6 +729,7 @@ export default function App() {
                   setTheme={setTheme}
                   onOpenProfile={() => setShowUserProfileModal(true)}
                   onOpenContactProfile={(chat) => setSelectedContactChat(chat)}
+                  onOpenUrl={handleOpenUrl}
                 />
               )}
 
@@ -767,6 +849,9 @@ export default function App() {
                     onOpenNotifications={() => setShowNotifications(true)}
                     onOpenUserProfile={() => setShowUserProfileModal(true)}
                     onBackToChats={handleGoBack}
+                    useInAppBrowser={useInAppBrowser}
+                    setUseInAppBrowser={setUseInAppBrowser}
+                    onOpenBrowser={handleOpenBrowser}
                   />
                 </div>
               )}
@@ -868,6 +953,13 @@ export default function App() {
           onSaveProfile={handleUpdateUserProfile}
         />
       )}
+
+      {/* In-App Browser & Search Engine Modal */}
+      <InAppBrowserModal
+        isOpen={isBrowserOpen}
+        initialUrl={browserInitialUrl}
+        onClose={() => setIsBrowserOpen(false)}
+      />
 
       {/* Active Audio / Video Call Modal */}
       {activeCall && (
