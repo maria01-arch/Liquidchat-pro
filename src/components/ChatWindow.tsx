@@ -139,6 +139,16 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
 
   const messagesEndRef = useRef<HTMLDivElement | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const textareaRef = useRef<HTMLTextAreaElement | null>(null);
+
+  // Auto-expand textarea height as user types
+  useEffect(() => {
+    if (textareaRef.current) {
+      textareaRef.current.style.height = 'auto';
+      const scrollHeight = textareaRef.current.scrollHeight;
+      textareaRef.current.style.height = `${Math.min(scrollHeight, 140)}px`;
+    }
+  }, [inputText]);
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -210,7 +220,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
     setReplyingTo(null);
   };
 
-  const handleKeyPress = (e: React.KeyboardEvent<HTMLInputElement>) => {
+  const handleKeyPress = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
       handleSend();
@@ -1255,7 +1265,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
               </button>
             </div>
           ) : (
-            <div className="flex items-center space-x-2 bg-slate-900/90 border border-slate-800 rounded-full px-3 py-1.5 shadow-2xl">
+            <div className="flex items-end space-x-2 bg-slate-900/90 border border-slate-800 rounded-2xl sm:rounded-3xl px-3 py-1.5 shadow-2xl transition-all duration-150">
               <input
                 type="file"
                 ref={fileInputRef}
@@ -1267,7 +1277,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
               {/* Emoji Toggle Icon */}
               <button
                 onClick={() => setInputText((prev) => prev + ' 😊')}
-                className="p-2 text-slate-400 hover:text-slate-200 transition-colors"
+                className="p-2 text-slate-400 hover:text-slate-200 transition-colors pb-2"
                 title="Emoji Picker"
               >
                 <Smile className="w-5 h-5" />
@@ -1276,14 +1286,14 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
               {/* Attach Paperclip Icon */}
               <button
                 onClick={() => fileInputRef.current?.click()}
-                className="p-2 text-slate-400 hover:text-slate-200 transition-colors"
+                className="p-2 text-slate-400 hover:text-slate-200 transition-colors pb-2"
                 title="Attach File or Image"
               >
                 <Paperclip className="w-5 h-5 rotate-45" />
               </button>
 
-              {/* Main Input Field */}
-              <div className="flex-1 relative">
+              {/* Main Auto-Expanding Input Field */}
+              <div className="flex-1 relative my-auto">
                 {isRecordingVoice ? (
                   <div className="flex items-center justify-between text-xs px-2 py-1">
                     <div className="flex items-center space-x-2">
@@ -1311,13 +1321,15 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
                     </div>
                   </div>
                 ) : (
-                  <input
-                    type="text"
+                  <textarea
+                    ref={textareaRef}
+                    rows={1}
                     value={inputText}
                     onChange={(e) => setInputText(e.target.value)}
                     onKeyDown={handleKeyPress}
                     placeholder="Message"
-                    className="w-full bg-transparent border-none text-slate-100 placeholder-slate-400 text-sm focus:outline-none px-2 font-normal"
+                    className="w-full bg-transparent border-none text-slate-100 placeholder-slate-400 text-sm focus:outline-none px-2 font-normal resize-none overflow-y-auto leading-snug py-1 block"
+                    style={{ minHeight: '26px', maxHeight: '140px' }}
                   />
                 )}
               </div>
@@ -1325,38 +1337,40 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
               {/* Vault Picker trigger */}
               <button
                 onClick={() => setShowVaultPicker(true)}
-                className="p-2 text-slate-400 hover:text-slate-200 transition-colors hidden sm:block"
+                className="p-2 text-slate-400 hover:text-slate-200 transition-colors hidden sm:block pb-2"
                 title="Attach from Vault"
               >
                 <HardDrive className="w-4 h-4" />
               </button>
 
-              {/* Circular Sky-Blue Voice / Send Button matching screenshot 5 */}
-              {inputText.trim() ? (
-                <button
-                  onClick={handleSend}
-                  className="p-2.5 rounded-full bg-sky-500 hover:bg-sky-600 text-white shadow-lg shadow-sky-500/30 transition-all active:scale-95 shrink-0"
-                  title="Send Message"
-                >
-                  <Send className="w-4 h-4 fill-current" />
-                </button>
-              ) : isRecordingVoice ? (
-                <button
-                  onClick={handleStopVoiceToPreview}
-                  className="p-2.5 rounded-full bg-sky-500 hover:bg-sky-600 text-white shadow-lg shadow-sky-500/30 transition-all active:scale-95 shrink-0"
-                  title="Finish & Preview Voice Note"
-                >
-                  <Check className="w-4 h-4" />
-                </button>
-              ) : (
-                <button
-                  onClick={handleStartVoiceRecording}
-                  className="p-2.5 rounded-full bg-sky-500 hover:bg-sky-600 text-white shadow-lg shadow-sky-500/30 transition-all active:scale-95 shrink-0"
-                  title="Record Voice Note"
-                >
-                  <Mic className="w-4 h-4 fill-current" />
-                </button>
-              )}
+              {/* Circular Sky-Blue Voice / Send Button */}
+              <div className="pb-1">
+                {inputText.trim() ? (
+                  <button
+                    onClick={handleSend}
+                    className="p-2.5 rounded-full bg-sky-500 hover:bg-sky-600 text-white shadow-lg shadow-sky-500/30 transition-all active:scale-95 shrink-0"
+                    title="Send Message"
+                  >
+                    <Send className="w-4 h-4 fill-current" />
+                  </button>
+                ) : isRecordingVoice ? (
+                  <button
+                    onClick={handleStopVoiceToPreview}
+                    className="p-2.5 rounded-full bg-sky-500 hover:bg-sky-600 text-white shadow-lg shadow-sky-500/30 transition-all active:scale-95 shrink-0"
+                    title="Finish & Preview Voice Note"
+                  >
+                    <Check className="w-4 h-4" />
+                  </button>
+                ) : (
+                  <button
+                    onClick={handleStartVoiceRecording}
+                    className="p-2.5 rounded-full bg-sky-500 hover:bg-sky-600 text-white shadow-lg shadow-sky-500/30 transition-all active:scale-95 shrink-0"
+                    title="Record Voice Note"
+                  >
+                    <Mic className="w-4 h-4 fill-current" />
+                  </button>
+                )}
+              </div>
             </div>
           )}
         </footer>

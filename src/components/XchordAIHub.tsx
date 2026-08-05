@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { PageHeader } from './PageHeader';
 import { Bot, Sparkles, Send, ShieldCheck, ListTodo, MessageSquare, Lightbulb, RefreshCw, Copy, Check } from 'lucide-react';
 import { User } from '../types';
@@ -30,6 +30,15 @@ export const XchordAIHub: React.FC<XchordAIHubProps> = ({
     `Hello! I am **xchord AI**, the official intelligent assistant for liquidchat crafted by **xchordlabs corp**.\n\nI can assist you with:\n• Generating tasks & action items from encrypted chats\n• Providing security & passkey advice\n• Summarizing long group conversations\n• Drafting smart replies & advice`
   );
   const [copied, setCopied] = useState(false);
+  const textareaRef = useRef<HTMLTextAreaElement | null>(null);
+
+  useEffect(() => {
+    if (textareaRef.current) {
+      textareaRef.current.style.height = 'auto';
+      const scrollHeight = textareaRef.current.scrollHeight;
+      textareaRef.current.style.height = `${Math.min(scrollHeight, 120)}px`;
+    }
+  }, [prompt]);
 
   const handleSend = async (customPrompt?: string, mode?: string) => {
     const textToSubmit = customPrompt || prompt;
@@ -163,19 +172,26 @@ export const XchordAIHub: React.FC<XchordAIHubProps> = ({
         </div>
 
         {/* Prompt Input */}
-        <div className="pt-4 border-t border-slate-800 flex items-center space-x-2 mt-3">
-          <input
-            type="text"
+        <div className="pt-4 border-t border-slate-800 flex items-end space-x-2 mt-3">
+          <textarea
+            ref={textareaRef}
+            rows={1}
             value={prompt}
             onChange={(e) => setPrompt(e.target.value)}
-            onKeyDown={(e) => e.key === 'Enter' && handleSend()}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' && !e.shiftKey) {
+                e.preventDefault();
+                handleSend();
+              }
+            }}
             placeholder="Ask xchord AI anything about tasks, advice, or code..."
-            className="flex-1 px-4 py-2.5 bg-slate-950 border border-slate-800 rounded-2xl text-xs text-slate-100 placeholder-slate-500 focus:outline-none focus:border-indigo-500/50"
+            className="flex-1 px-4 py-2.5 bg-slate-950 border border-slate-800 rounded-2xl text-xs text-slate-100 placeholder-slate-500 focus:outline-none focus:border-indigo-500/50 resize-none overflow-y-auto leading-relaxed"
+            style={{ minHeight: '38px', maxHeight: '120px' }}
           />
           <button
             onClick={() => handleSend()}
             disabled={!prompt.trim() || loading}
-            className={`p-2.5 rounded-2xl font-bold transition-all ${
+            className={`p-2.5 rounded-2xl font-bold transition-all shrink-0 ${
               prompt.trim() && !loading
                 ? 'bg-gradient-to-r from-indigo-500 to-purple-500 text-white shadow-md'
                 : 'bg-slate-800 text-slate-600 cursor-not-allowed'
