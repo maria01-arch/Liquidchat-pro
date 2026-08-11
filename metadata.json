@@ -1,0 +1,6 @@
+{
+  "name": "pigion",
+  "description": "Pigion is a private, end-to-end encrypted messenger featuring self-destructing timer messages, encrypted cloud vault file storage, voice notes, and a passphrase-only login (no phone number, no password resets).",
+  "requestFramePermissions": ["microphone", "camera"],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

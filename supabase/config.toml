@@ -1,0 +1,7 @@
+project_id = "cgrfdxxnesepuhblgywl"
+
+[functions.wallet-auth]
+# Must be false: this function IS the login system, so it has to be
+# callable before the caller has a Supabase session/JWT. It does its own
+# security via the Ed25519 challenge/signature check inside the function.
+verify_jwt = false
