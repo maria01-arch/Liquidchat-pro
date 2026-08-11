@@ -25,7 +25,7 @@ import { CURRENT_USER, MOCK_USERS, INITIAL_CHATS, INITIAL_MESSAGES, INITIAL_FILE
 import { generateFingerprint } from './utils/crypto';
 import { playNotificationSound } from './utils/audio';
 import { isBackendConfigured } from './lib/backendMode';
-import { fetchMyChats, fetchMessages as fetchLiveMessages, sendMessage as sendLiveMessage, findOrCreateDirectChat, updateUserProfile } from './services/chatService';
+import { fetchMyChats, fetchMessages as fetchLiveMessages, sendMessage as sendLiveMessage, findOrCreateDirectChat, updateUserProfile, createGroupChat, fetchAllUsers } from './services/chatService';
 import { logout, restoreSession } from './utils/auth';
 import { useRealtimeMessages } from './hooks/useRealtimeMessages';
 import type { PigionIdentity } from './utils/wallet';
@@ -58,12 +58,12 @@ export default function App() {
     };
   }, []);
 
-  const [users, setUsers] = useState<User[]>(MOCK_USERS);
-  const [chats, setChats] = useState<Chat[]>(INITIAL_CHATS);
+  const [users, setUsers] = useState<User[]>(isBackendConfigured ? [] : MOCK_USERS);
+  const [chats, setChats] = useState<Chat[]>(isBackendConfigured ? [] : INITIAL_CHATS);
   const [activeChatId, setActiveChatId] = useState<string | null>(null);
-  const [messages, setMessages] = useState<Record<string, Message[]>>(INITIAL_MESSAGES);
-  const [vaultFiles, setVaultFiles] = useState<CloudFile[]>(INITIAL_FILES);
-  const [notifications, setNotifications] = useState<NotificationItem[]>(INITIAL_NOTIFICATIONS);
+  const [messages, setMessages] = useState<Record<string, Message[]>>(isBackendConfigured ? {} : INITIAL_MESSAGES);
+  const [vaultFiles, setVaultFiles] = useState<CloudFile[]>(isBackendConfigured ? [] : INITIAL_FILES);
+  const [notifications, setNotifications] = useState<NotificationItem[]>(isBackendConfigured ? [] : INITIAL_NOTIFICATIONS);
 
   const [activeTab, setActiveTab] = useState<ActiveTab>('chats');
   const [theme, setTheme] = useState<'dark' | 'light' | 'emerald'>('dark');
@@ -356,6 +356,20 @@ export default function App() {
     };
   }, [isLiveSession, currentUser.id]);
 
+  // --- Live backend: fetch the real user directory (replaces mock contacts) ---
+  useEffect(() => {
+    if (!isLiveSession) return;
+    let cancelled = false;
+    fetchAllUsers(currentUser.id)
+      .then((directory) => {
+        if (!cancelled) setUsers((prev) => [currentUser, ...directory]);
+      })
+      .catch((err) => console.error('[Pigion] Failed to load user directory from Supabase:', err));
+    return () => {
+      cancelled = true;
+    };
+  }, [isLiveSession, currentUser.id]);
+
   // --- Live backend: fetch a chat's real (decrypted) message history when opened ---
   useEffect(() => {
     if (!isLiveSession || !identity || !activeChat) return;
@@ -433,9 +447,12 @@ export default function App() {
     const chat = chats.find((c) => c.id === chatId);
     const selfDestructSecs = chat ? chat.selfDestructTimer : 0;
 
-    // Live backend + direct chat: encrypt, persist to Supabase, then reflect
+    // Live backend + direct or group chat: persist to Supabase, then reflect
     // the real (server-confirmed) message locally once the write succeeds.
-    if (isLiveSession && identity && chat && chat.type === 'direct' && !attachment) {
+    // Direct chats are genuinely E2E encrypted; group chats pass through as
+    // plaintext for now (see chatService.ts module note — real multi-party
+    // E2EE for groups is a separate follow-up).
+    if (isLiveSession && identity && chat && (chat.type === 'direct' || chat.type === 'group') && !attachment) {
       const optimisticId = `pending_${Date.now()}`;
       const optimisticMsg: Message = {
         id: optimisticId,
@@ -446,7 +463,7 @@ export default function App() {
         content,
         type,
         timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-        isEncrypted: true,
+        isEncrypted: chat.type === 'direct',
         status: 'sent',
         selfDestructTimer: selfDestructSecs,
         expiresAt: selfDestructSecs > 0 ? Date.now() + selfDestructSecs * 1000 : undefined,
@@ -696,6 +713,18 @@ export default function App() {
 
   // Create New Group
   const handleCreateGroup = (name: string, topic: string, memberIds: string[], timerSeconds: number) => {
+    if (isLiveSession && identity) {
+      createGroupChat(currentUser.id, name, topic, memberIds, timerSeconds)
+        .then((liveGroup) => {
+          setChats((prev) => [liveGroup, ...prev]);
+          setActiveTab('chats');
+          setActiveChatId(liveGroup.id);
+        })
+        .catch((err) => console.error('[Pigion] Failed to create group:', err));
+      return;
+    }
+
+    // Demo mode fallback — local-only group
     const selectedUsers = users.filter((u) => memberIds.includes(u.id));
     const newChatId = `chat_group_${Date.now()}`;
 

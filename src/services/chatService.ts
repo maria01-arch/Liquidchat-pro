@@ -204,6 +204,54 @@ export async function updateUserProfile(userId: string, updates: Partial<{
   return mapDbUserToUser(data);
 }
 
+/**
+ * Create a real group chat in Supabase (creator + selected members).
+ * NOTE: group messages are NOT end-to-end encrypted yet (see module note
+ * at top of file) — this creates the chat/membership rows so the group is
+ * real and functional; message content passes through as plaintext for now.
+ */
+export async function createGroupChat(
+  myUserId: string,
+  name: string,
+  topic: string,
+  memberIds: string[],
+  selfDestructTimer: number
+): Promise<Chat> {
+  const fingerprint = `GROUP-${name.slice(0, 8).toUpperCase()}-${Date.now().toString(36).toUpperCase()}`;
+
+  const { data: chatRow, error } = await supabase
+    .from('chats')
+    .insert({
+      type: 'group',
+      name,
+      topic: topic || null,
+      self_destruct_timer: selfDestructTimer,
+      e2e_fingerprint: fingerprint,
+      created_by: myUserId,
+    })
+    .select()
+    .single();
+  if (error) throw error;
+
+  const allMemberIds = Array.from(new Set([myUserId, ...memberIds]));
+  const { error: memberErr } = await supabase
+    .from('chat_members')
+    .insert(allMemberIds.map((userId) => ({ chat_id: chatRow.id, user_id: userId })));
+  if (memberErr) throw memberErr;
+
+  const { data: memberRows } = await supabase.from('users').select('*').in('id', allMemberIds);
+  const members = (memberRows ?? []).map(mapDbUserToUser);
+
+  return mapDbChatToChat(chatRow, members);
+}
+
+/** Fetch the public directory of other users (for Contacts / new-chat pickers). Excludes yourself. */
+export async function fetchAllUsers(myUserId: string): Promise<User[]> {
+  const { data, error } = await supabase.from('users').select('*').neq('id', myUserId).order('username');
+  if (error) throw error;
+  return (data ?? []).map(mapDbUserToUser);
+}
+
 /** Find (or reuse) a direct chat between the current user and a peer. */
 export async function findOrCreateDirectChat(myUserId: string, peer: User, myIdentity: PigionIdentity): Promise<Chat> {
   const { data: myChatIds } = await supabase.from('chat_members').select('chat_id').eq('user_id', myUserId);
