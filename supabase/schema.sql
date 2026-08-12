@@ -23,15 +23,33 @@ create table if not exists public.users (
   status text not null default 'offline' check (status in ('online','offline','away')),
   custom_status text,
   bio text,
+  -- Private Number: a permanent, randomly-generated in-app identifier
+  -- formatted like a phone number for a chosen country. Not a real phone
+  -- number — nobody can call/SMS it. Lets people be reached without ever
+  -- appearing in an open, browsable directory of every user.
+  country_code text,                    -- ISO 3166-1 alpha-2, e.g. 'US'
+  private_number text unique,           -- canonical, no spaces, e.g. '+14155550199'
+  private_number_display text,          -- formatted for display, e.g. '+1 415 555 0199'
   created_at timestamptz not null default now(),
   last_seen_at timestamptz not null default now()
 );
 
 alter table public.users enable row level security;
 
-create policy "Users are viewable by any authenticated user"
+create policy "Users can view themselves, contacts, and chat co-members"
   on public.users for select
-  using (auth.role() = 'authenticated');
+  using (
+    id = auth.uid()
+    or exists (
+      select 1 from public.contacts c
+      where c.owner_id = auth.uid() and c.contact_user_id = users.id
+    )
+    or exists (
+      select 1 from public.chat_members my
+      join public.chat_members their on their.chat_id = my.chat_id
+      where my.user_id = auth.uid() and their.user_id = users.id
+    )
+  );
 
 create policy "Users can update their own row"
   on public.users for update
@@ -52,6 +70,56 @@ create table if not exists public.auth_challenges (
 alter table public.auth_challenges enable row level security;
 -- No policies granted to anon/authenticated — only the service role (used
 -- exclusively inside the edge function) may read or write this table.
+
+-- ---------------------------------------------------------------------------
+-- CONTACTS
+-- Explicit address book — the app never shows an open "browse everyone"
+-- directory. You only see people you've added (via their Private Number)
+-- or who you already share a chat with (covered by the users SELECT policy
+-- above).
+-- ---------------------------------------------------------------------------
+create table if not exists public.contacts (
+  owner_id uuid not null references public.users(id) on delete cascade,
+  contact_user_id uuid not null references public.users(id) on delete cascade,
+  created_at timestamptz not null default now(),
+  primary key (owner_id, contact_user_id)
+);
+
+alter table public.contacts enable row level security;
+
+create policy "Users manage their own contact list"
+  on public.contacts for all
+  using (owner_id = auth.uid())
+  with check (owner_id = auth.uid());
+
+-- ---------------------------------------------------------------------------
+-- PRIVATE NUMBER LOOKUP
+-- A single-purpose function instead of a general SELECT policy: it returns
+-- at most one row on an EXACT private_number match, and nothing else about
+-- the users table is exposed through it — so it can't be used to browse or
+-- enumerate accounts the way a broad "select * from users" could.
+-- ---------------------------------------------------------------------------
+create or replace function public.search_by_private_number(p_number text)
+returns table (
+  id uuid,
+  username text,
+  avatar_url text,
+  public_key text,
+  encryption_public_key text,
+  public_key_fingerprint text,
+  private_number_display text
+)
+language sql
+security definer
+set search_path = public
+as $$
+  select id, username, avatar_url, public_key, encryption_public_key, public_key_fingerprint, private_number_display
+  from public.users
+  where private_number = p_number
+  limit 1;
+$$;
+
+grant execute on function public.search_by_private_number(text) to authenticated;
 
 -- ---------------------------------------------------------------------------
 -- CHATS (direct / group / ai)
@@ -96,6 +164,22 @@ create policy "Members can view their chats"
 create policy "Members can view their membership rows"
   on public.chat_members for select
   using (user_id = auth.uid());
+
+-- Without these, every chat/group creation is silently rejected by RLS
+-- (enabled with zero policies = deny-all) even though the client-side call
+-- appears to succeed until the promise rejects.
+create policy "Users can create chats they own"
+  on public.chats for insert
+  with check (created_by = auth.uid());
+
+create policy "Chat creator can add members"
+  on public.chat_members for insert
+  with check (
+    exists (
+      select 1 from public.chats c
+      where c.id = chat_members.chat_id and c.created_by = auth.uid()
+    )
+  );
 
 -- ---------------------------------------------------------------------------
 -- MESSAGES

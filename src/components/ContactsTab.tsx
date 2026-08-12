@@ -8,6 +8,7 @@ interface ContactsTabProps {
   users: User[];
   currentUser: User;
   onStartChat: (user: User) => void;
+  onOpenAddContactModal?: () => void;
   unreadNotifCount?: number;
   onOpenNotifications?: () => void;
   onOpenUserProfile?: () => void;
@@ -20,6 +21,7 @@ export const ContactsTab: React.FC<ContactsTabProps> = ({
   users,
   currentUser,
   onStartChat,
+  onOpenAddContactModal,
   unreadNotifCount = 0,
   onOpenNotifications,
   onOpenUserProfile,
@@ -31,7 +33,7 @@ export const ContactsTab: React.FC<ContactsTabProps> = ({
     <div className="flex-1 flex flex-col h-full bg-gray-50 dark:bg-slate-950 overflow-hidden">
       <PageHeader
         title="Encrypted Contacts"
-        subtitle="Verified user directory on zero-knowledge network"
+        subtitle={onOpenAddContactModal ? 'Your private address book' : 'Verified user directory on zero-knowledge network'}
         icon={UserPlus}
         badge="Directory E2EE"
         currentUser={currentUser}
@@ -43,19 +45,44 @@ export const ContactsTab: React.FC<ContactsTabProps> = ({
         onBackToChats={onBackToChats}
       />
 
+      {onOpenAddContactModal && (
+        <div className="px-5 pt-4">
+          <button
+            onClick={onOpenAddContactModal}
+            className="w-full py-3 bg-blue-500/10 hover:bg-blue-500/20 border border-blue-500/30 text-blue-300 text-sm font-semibold rounded-2xl flex items-center justify-center space-x-2 transition-colors"
+          >
+            <UserPlus className="w-4 h-4" />
+            <span>Add Contact by Private Number</span>
+          </button>
+        </div>
+      )}
+
       <div className="flex-1 overflow-y-auto p-4 sm:p-6 pb-24 md:pb-6 space-y-6">
         <div className="bg-white dark:bg-slate-900 border border-gray-200 dark:border-slate-800 rounded-3xl p-6 shadow-xs">
         <div className="space-y-1">
           <h1 className="text-xl font-bold text-gray-900 dark:text-slate-100 flex items-center space-x-2">
             <UserCheck className="w-6 h-6 text-teal-600 dark:text-teal-400" />
-            <span>Pigion Network Directory</span>
+            <span>{onOpenAddContactModal ? 'My Contacts' : 'Pigion Network Directory'}</span>
           </h1>
           <p className="text-xs text-gray-500 dark:text-slate-400">
-            Verified E2EE users registered on Pigion. Click any contact to launch an encrypted channel.
+            {onOpenAddContactModal
+              ? "People you've added by Private Number. Pigion never shows an open list of every user."
+              : 'Verified E2EE users registered on Pigion. Click any contact to launch an encrypted channel.'}
           </p>
         </div>
       </div>
 
+      {users.filter((u) => u.id !== currentUser.id).length === 0 ? (
+        <div className="bg-white dark:bg-slate-900 border border-gray-200 dark:border-slate-800 rounded-3xl p-8 text-center">
+          <UserPlus className="w-8 h-8 text-gray-300 dark:text-slate-600 mx-auto mb-3" />
+          <h3 className="text-sm font-semibold text-gray-700 dark:text-slate-300">No contacts yet</h3>
+          <p className="text-xs text-gray-500 dark:text-slate-400 mt-1">
+            {onOpenAddContactModal
+              ? 'Add someone using their Private Number to start chatting.'
+              : 'Start a conversation to see contacts here.'}
+          </p>
+        </div>
+      ) : (
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
         {users.map((u) => {
           const isSelf = u.id === currentUser.id;
@@ -103,6 +130,7 @@ export const ContactsTab: React.FC<ContactsTabProps> = ({
           );
         })}
       </div>
+      )}
       </div>
     </div>
   );

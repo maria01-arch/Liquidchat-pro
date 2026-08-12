@@ -13,6 +13,9 @@ export interface User {
   bio?: string;
   createdAt: string;
   publicKeyFingerprint: string;
+  /** Permanent in-app "phone-style" identifier — see src/utils/privateNumber.ts. Not a real phone number. */
+  privateNumberDisplay?: string;
+  countryCode?: string;
 }
 
 export type MessageType = 'text' | 'image' | 'voice' | 'file' | 'system';

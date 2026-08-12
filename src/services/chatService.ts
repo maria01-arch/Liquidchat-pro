@@ -14,7 +14,8 @@
  */
 import { supabase } from '../lib/supabaseClient';
 import type { PigionIdentity } from '../utils/wallet';
-import { deriveSharedKey, encryptE2EEMessage, decryptE2EEMessage, isE2EEEncrypted } from '../utils/crypto';
+import { deriveSharedKey, encryptE2EEMessage, decryptE2EEMessage, isE2EEEncrypted, generateSessionFingerprint } from '../utils/crypto';
+import { generatePrivateNumber, normalizePrivateNumber, type CountryOption } from '../utils/privateNumber';
 import type { Chat, Message, User } from '../types';
 
 function mapDbUserToUser(row: any): User {
@@ -29,6 +30,8 @@ function mapDbUserToUser(row: any): User {
     bio: row.bio ?? undefined,
     createdAt: row.created_at,
     publicKeyFingerprint: row.public_key_fingerprint,
+    privateNumberDisplay: row.private_number_display ?? undefined,
+    countryCode: row.country_code ?? undefined,
   };
 }
 
@@ -245,11 +248,74 @@ export async function createGroupChat(
   return mapDbChatToChat(chatRow, members);
 }
 
-/** Fetch the public directory of other users (for Contacts / new-chat pickers). Excludes yourself. */
-export async function fetchAllUsers(myUserId: string): Promise<User[]> {
-  const { data, error } = await supabase.from('users').select('*').neq('id', myUserId).order('username');
+/**
+ * Claim a permanent Private Number for the current account. Retries a
+ * handful of times on the rare random collision with an existing number.
+ * Once set, this does not change — there is intentionally no "regenerate."
+ */
+export async function claimPrivateNumber(userId: string, country: CountryOption): Promise<User> {
+  const MAX_ATTEMPTS = 5;
+  for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt++) {
+    const { canonical, display } = generatePrivateNumber(country);
+    const { data, error } = await supabase
+      .from('users')
+      .update({ country_code: country.code, private_number: canonical, private_number_display: display })
+      .eq('id', userId)
+      .select()
+      .single();
+
+    if (!error) return mapDbUserToUser(data);
+    // 23505 = unique_violation — retry with a freshly generated number.
+    if ((error as any).code !== '23505') throw error;
+  }
+  throw new Error('Could not generate a unique private number — please try again.');
+}
+
+/** Look up an account by its exact Private Number. Returns null if nothing matches. */
+export async function searchByPrivateNumber(rawInput: string): Promise<User | null> {
+  const normalized = normalizePrivateNumber(rawInput);
+  if (!normalized) return null;
+  const { data, error } = await supabase.rpc('search_by_private_number', { p_number: normalized });
   if (error) throw error;
-  return (data ?? []).map(mapDbUserToUser);
+  const row = Array.isArray(data) ? data[0] : data;
+  if (!row) return null;
+  return {
+    id: row.id,
+    username: row.username,
+    avatar: row.avatar_url ?? '',
+    encryptionPublicKey: row.encryption_public_key,
+    signingPublicKey: row.public_key,
+    status: 'offline',
+    createdAt: '',
+    publicKeyFingerprint: row.public_key_fingerprint,
+    privateNumberDisplay: row.private_number_display ?? undefined,
+  };
+}
+
+/** Fetch your saved contacts (address book), not an open directory of every user. */
+export async function fetchMyContacts(myUserId: string): Promise<User[]> {
+  const { data, error } = await supabase
+    .from('contacts')
+    .select('users:contact_user_id(*)')
+    .eq('owner_id', myUserId);
+  if (error) throw error;
+  return (data ?? []).map((row: any) => mapDbUserToUser(row.users)).filter(Boolean);
+}
+
+export async function addContact(myUserId: string, contactUserId: string): Promise<void> {
+  const { error } = await supabase
+    .from('contacts')
+    .upsert({ owner_id: myUserId, contact_user_id: contactUserId }, { onConflict: 'owner_id,contact_user_id' });
+  if (error) throw error;
+}
+
+export async function removeContact(myUserId: string, contactUserId: string): Promise<void> {
+  const { error } = await supabase
+    .from('contacts')
+    .delete()
+    .eq('owner_id', myUserId)
+    .eq('contact_user_id', contactUserId);
+  if (error) throw error;
 }
 
 /** Find (or reuse) a direct chat between the current user and a peer. */
@@ -266,7 +332,6 @@ export async function findOrCreateDirectChat(myUserId: string, peer: User, myIde
     if (chatRow) return mapDbChatToChat(chatRow, [peer]);
   }
 
-  const { generateSessionFingerprint } = await import('../utils/crypto');
   const fingerprint = generateSessionFingerprint(myIdentity.encryptionPublicKey, peer.encryptionPublicKey);
 
   const { data: newChat, error } = await supabase

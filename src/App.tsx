@@ -10,6 +10,7 @@ import { SettingsTab } from './components/SettingsTab';
 import { PasskeyModal } from './components/PasskeyModal';
 import { EncryptionVerificationModal } from './components/EncryptionVerificationModal';
 import { NewGroupModal } from './components/NewGroupModal';
+import { AddContactModal } from './components/AddContactModal';
 import { AuthModal } from './components/AuthModal';
 import { NotificationCenter } from './components/NotificationCenter';
 import { UserProfileModal } from './components/UserProfileModal';
@@ -25,8 +26,9 @@ import { CURRENT_USER, MOCK_USERS, INITIAL_CHATS, INITIAL_MESSAGES, INITIAL_FILE
 import { generateFingerprint } from './utils/crypto';
 import { playNotificationSound } from './utils/audio';
 import { isBackendConfigured } from './lib/backendMode';
-import { fetchMyChats, fetchMessages as fetchLiveMessages, sendMessage as sendLiveMessage, findOrCreateDirectChat, updateUserProfile, createGroupChat, fetchAllUsers } from './services/chatService';
+import { fetchMyChats, fetchMessages as fetchLiveMessages, sendMessage as sendLiveMessage, findOrCreateDirectChat, updateUserProfile, createGroupChat, fetchMyContacts, addContact, searchByPrivateNumber, claimPrivateNumber } from './services/chatService';
 import { logout, restoreSession } from './utils/auth';
+import type { CountryOption } from './utils/privateNumber';
 import { useRealtimeMessages } from './hooks/useRealtimeMessages';
 import type { PigionIdentity } from './utils/wallet';
 
@@ -320,6 +322,7 @@ export default function App() {
   const [showAuthModal, setShowAuthModal] = useState(false);
   const [showEncryptionModal, setShowEncryptionModal] = useState(false);
   const [showNewGroupModal, setShowNewGroupModal] = useState(false);
+  const [showAddContactModal, setShowAddContactModal] = useState(false);
   const [showUserProfileModal, setShowUserProfileModal] = useState(false);
   const [selectedContactChat, setSelectedContactChat] = useState<Chat | null>(null);
 
@@ -333,6 +336,22 @@ export default function App() {
         bio: updated.bio,
         customStatus: updated.customStatus,
       }).catch((err) => console.error('[Pigion] Failed to save profile:', err));
+    }
+  };
+
+  const [privateNumberError, setPrivateNumberError] = useState<string | null>(null);
+  const handleClaimPrivateNumber = (country: CountryOption) => {
+    if (!isLiveSession) return;
+    setPrivateNumberError(null);
+    claimPrivateNumber(currentUser.id, country)
+      .then((updatedUser) => setCurrentUser(updatedUser))
+      .catch((err) => setPrivateNumberError(err instanceof Error ? err.message : 'Failed to claim a private number.'));
+  };
+
+  const handleAddContact = (user: User) => {
+    setUsers((prev) => (prev.some((u) => u.id === user.id) ? prev : [...prev, user]));
+    if (isLiveSession) {
+      addContact(currentUser.id, user.id).catch((err) => console.error('[Pigion] Failed to save contact:', err));
     }
   };
 
@@ -356,15 +375,15 @@ export default function App() {
     };
   }, [isLiveSession, currentUser.id]);
 
-  // --- Live backend: fetch the real user directory (replaces mock contacts) ---
+  // --- Live backend: fetch your saved contacts (not an open directory) ---
   useEffect(() => {
     if (!isLiveSession) return;
     let cancelled = false;
-    fetchAllUsers(currentUser.id)
-      .then((directory) => {
-        if (!cancelled) setUsers((prev) => [currentUser, ...directory]);
+    fetchMyContacts(currentUser.id)
+      .then((contacts) => {
+        if (!cancelled) setUsers([currentUser, ...contacts]);
       })
-      .catch((err) => console.error('[Pigion] Failed to load user directory from Supabase:', err));
+      .catch((err) => console.error('[Pigion] Failed to load contacts from Supabase:', err));
     return () => {
       cancelled = true;
     };
@@ -1034,7 +1053,8 @@ export default function App() {
                   <ContactsTab
                     users={users}
                     currentUser={currentUser}
-                    onStartChat={(chatId) => navigateTo('chats', chatId)}
+                    onStartChat={(user) => handleStartDirectChat(user)}
+                    onOpenAddContactModal={isLiveSession ? () => setShowAddContactModal(true) : undefined}
                     unreadNotifCount={unreadNotifCount}
                     onOpenNotifications={() => setShowNotifications(true)}
                     onOpenUserProfile={() => setShowUserProfileModal(true)}
@@ -1043,6 +1063,15 @@ export default function App() {
                     onBackToChats={handleGoBack}
                   />
                 </div>
+              )}
+
+              {showAddContactModal && (
+                <AddContactModal
+                  onClose={() => setShowAddContactModal(false)}
+                  onSearch={(number) => searchByPrivateNumber(number)}
+                  onAddContact={handleAddContact}
+                  onStartChat={(user) => handleStartDirectChat(user)}
+                />
               )}
 
               {activeTab === 'settings' && (
@@ -1177,6 +1206,8 @@ export default function App() {
           user={currentUser}
           onClose={() => setShowUserProfileModal(false)}
           onSaveProfile={handleUpdateUserProfile}
+          onClaimPrivateNumber={isLiveSession ? handleClaimPrivateNumber : undefined}
+          privateNumberError={privateNumberError}
         />
       )}
 

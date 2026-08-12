@@ -1,12 +1,16 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { User } from '../types';
-import { X, Camera, ShieldCheck, Key, Check, UserCheck, Sparkles, Lock } from 'lucide-react';
+import { X, Camera, ShieldCheck, Key, Check, UserCheck, Sparkles, Lock, Phone, Copy, ChevronDown } from 'lucide-react';
 import { Avatar } from './Avatar';
+import { COUNTRY_OPTIONS, type CountryOption } from '../utils/privateNumber';
 
 interface UserProfileModalProps {
   user: User;
   onClose: () => void;
   onSaveProfile: (updated: Partial<User>) => void;
+  /** Only provided when a real backend is configured — Private Number needs a server to be permanent/unique. */
+  onClaimPrivateNumber?: (country: CountryOption) => void;
+  privateNumberError?: string | null;
 }
 
 const AVATAR_PRESETS = [
@@ -21,12 +25,26 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({
   user,
   onClose,
   onSaveProfile,
+  onClaimPrivateNumber,
+  privateNumberError,
 }) => {
   const [username, setUsername] = useState(user.username);
   const [customStatus, setCustomStatus] = useState(user.customStatus || 'Available for E2EE chat');
   const [avatar, setAvatar] = useState(user.avatar);
   const [status, setStatus] = useState<'online' | 'offline' | 'busy'>(user.status || 'online');
   const [savedSuccess, setSavedSuccess] = useState(false);
+  const [selectedCountry, setSelectedCountry] = useState<CountryOption>(COUNTRY_OPTIONS[0]);
+  const [countryPickerOpen, setCountryPickerOpen] = useState(false);
+  const [numberCopied, setNumberCopied] = useState(false);
+  const [claiming, setClaiming] = useState(false);
+
+  useEffect(() => {
+    if (user.privateNumberDisplay) setClaiming(false);
+  }, [user.privateNumberDisplay]);
+
+  useEffect(() => {
+    if (privateNumberError) setClaiming(false);
+  }, [privateNumberError]);
 
   const handleCustomAvatarUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -181,6 +199,89 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({
               Public Key: {user.signingPublicKey ? `${user.signingPublicKey.slice(0, 20)}…` : 'Not available'}
             </p>
           </div>
+
+          {/* Private Number */}
+          {onClaimPrivateNumber && (
+            <div className="p-3 bg-gray-50 dark:bg-slate-950/60 rounded-2xl border border-gray-200 dark:border-slate-800 text-xs space-y-2">
+              <div className="flex items-center space-x-1 text-blue-600 dark:text-blue-400 font-semibold">
+                <Phone className="w-3.5 h-3.5" />
+                <span>Private Number</span>
+              </div>
+
+              {user.privateNumberDisplay ? (
+                <div className="space-y-1">
+                  <p className="text-[10px] text-gray-500 dark:text-slate-400">
+                    Share this so people can find and message you. It's permanent and can't be changed.
+                  </p>
+                  <div className="flex items-center justify-between px-3 py-2 bg-white dark:bg-slate-900 border border-gray-200 dark:border-slate-800 rounded-xl">
+                    <span className="font-mono text-sm text-gray-900 dark:text-slate-100">{user.privateNumberDisplay}</span>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        navigator.clipboard.writeText(user.privateNumberDisplay!);
+                        setNumberCopied(true);
+                        setTimeout(() => setNumberCopied(false), 1500);
+                      }}
+                      className="text-gray-400 hover:text-blue-500"
+                    >
+                      {numberCopied ? <Check className="w-4 h-4 text-emerald-500" /> : <Copy className="w-4 h-4" />}
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <div className="space-y-2">
+                  <p className="text-[10px] text-gray-500 dark:text-slate-400">
+                    Generate a permanent, phone-style number so people can reach you without Pigion showing an
+                    open list of every user. Not a real phone number — nobody can call or text it.
+                  </p>
+
+                  <div className="relative">
+                    <button
+                      type="button"
+                      onClick={() => setCountryPickerOpen((v) => !v)}
+                      className="w-full flex items-center justify-between px-3.5 py-2 bg-white dark:bg-slate-900 border border-gray-200 dark:border-slate-800 rounded-xl text-xs font-medium text-gray-800 dark:text-slate-200"
+                    >
+                      <span>{selectedCountry.flag} {selectedCountry.name} ({selectedCountry.dialCode})</span>
+                      <ChevronDown className="w-3.5 h-3.5 text-gray-400" />
+                    </button>
+                    {countryPickerOpen && (
+                      <div className="absolute z-10 mt-1 w-full max-h-48 overflow-y-auto bg-white dark:bg-slate-900 border border-gray-200 dark:border-slate-800 rounded-xl shadow-lg">
+                        {COUNTRY_OPTIONS.map((c) => (
+                          <button
+                            key={c.code}
+                            type="button"
+                            onClick={() => {
+                              setSelectedCountry(c);
+                              setCountryPickerOpen(false);
+                            }}
+                            className="w-full text-left px-3.5 py-2 text-xs text-gray-700 dark:text-slate-300 hover:bg-gray-100 dark:hover:bg-slate-800"
+                          >
+                            {c.flag} {c.name} ({c.dialCode})
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+
+                  {privateNumberError && (
+                    <p className="text-[10px] text-red-500">{privateNumberError}</p>
+                  )}
+
+                  <button
+                    type="button"
+                    disabled={claiming}
+                    onClick={() => {
+                      setClaiming(true);
+                      onClaimPrivateNumber(selectedCountry);
+                    }}
+                    className="w-full py-2 rounded-xl text-xs font-bold bg-blue-600 hover:bg-blue-700 disabled:opacity-60 text-white shadow-xs transition-colors"
+                  >
+                    {claiming ? 'Generating…' : 'Generate My Private Number'}
+                  </button>
+                </div>
+              )}
+            </div>
+          )}
 
           {/* Action Footer */}
           <div className="pt-2 flex items-center justify-end space-x-2">
