@@ -340,6 +340,15 @@ export default function App() {
   };
 
   const [privateNumberError, setPrivateNumberError] = useState<string | null>(null);
+
+  // Global toast for background/async failures (chat creation, sending,
+  // contacts) that would otherwise fail silently with only a console log —
+  // exactly the kind of bug that's impossible to diagnose from the UI alone.
+  const [toastError, setToastError] = useState<string | null>(null);
+  const showErrorToast = (message: string) => {
+    setToastError(message);
+    setTimeout(() => setToastError(null), 6000);
+  };
   const handleClaimPrivateNumber = (country: CountryOption) => {
     if (!isLiveSession) return;
     setPrivateNumberError(null);
@@ -351,7 +360,10 @@ export default function App() {
   const handleAddContact = (user: User) => {
     setUsers((prev) => (prev.some((u) => u.id === user.id) ? prev : [...prev, user]));
     if (isLiveSession) {
-      addContact(currentUser.id, user.id).catch((err) => console.error('[Pigion] Failed to save contact:', err));
+      addContact(currentUser.id, user.id).catch((err) => {
+        console.error('[Pigion] Failed to save contact:', err);
+        showErrorToast('Could not save that contact — ' + (err instanceof Error ? err.message : 'please try again.'));
+      });
     }
   };
 
@@ -505,6 +517,7 @@ export default function App() {
         })
         .catch((err) => {
           console.error('[Pigion] Failed to send message:', err);
+          showErrorToast('Message failed to send — ' + (err instanceof Error ? err.message : 'please try again.'));
           setMessages((prev) => ({
             ...prev,
             [chatId]: (prev[chatId] || []).map((m) => (m.id === optimisticId ? { ...m, status: 'sent' } : m)),
@@ -739,7 +752,10 @@ export default function App() {
           setActiveTab('chats');
           setActiveChatId(liveGroup.id);
         })
-        .catch((err) => console.error('[Pigion] Failed to create group:', err));
+        .catch((err) => {
+          console.error('[Pigion] Failed to create group:', err);
+          showErrorToast('Could not create the group — ' + (err instanceof Error ? err.message : 'please try again.'));
+        });
       return;
     }
 
@@ -801,7 +817,10 @@ export default function App() {
           setActiveTab('chats');
           setActiveChatId(liveChat.id);
         })
-        .catch((err) => console.error('[Pigion] Failed to start chat:', err));
+        .catch((err) => {
+          console.error('[Pigion] Failed to start chat:', err);
+          showErrorToast('Could not open that chat — ' + (err instanceof Error ? err.message : 'please try again.'));
+        });
       return;
     }
 
@@ -870,6 +889,12 @@ export default function App() {
           : 'bg-[#F3F4F6] text-gray-900'
       }`}
     >
+      {toastError && (
+        <div className="fixed top-4 left-1/2 -translate-x-1/2 z-[100] max-w-sm w-[calc(100%-2rem)] bg-red-500/95 text-white text-xs font-medium px-4 py-3 rounded-2xl shadow-2xl flex items-start space-x-2 animate-in fade-in slide-in-from-top-2">
+          <span className="flex-1">{toastError}</span>
+          <button onClick={() => setToastError(null)} className="shrink-0 opacity-80 hover:opacity-100">✕</button>
+        </div>
+      )}
       {/* Main Container Layout (Full 100vh without top navbar) with Swipe & Drag Gesture Support */}
       <div
         onTouchStart={handleTouchStart}

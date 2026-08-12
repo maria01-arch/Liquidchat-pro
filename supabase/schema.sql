@@ -161,6 +161,14 @@ create policy "Members can view their chats"
     )
   );
 
+-- Without this, creating a chat breaks: insert()+select() in one call needs
+-- to read the row back immediately, but membership rows (which the above
+-- policy checks for) aren't inserted until the very next query — a
+-- chicken-and-egg gap that silently fails the whole chat creation.
+create policy "Creators can view chats they created"
+  on public.chats for select
+  using (created_by = auth.uid());
+
 create policy "Members can view their membership rows"
   on public.chat_members for select
   using (user_id = auth.uid());
