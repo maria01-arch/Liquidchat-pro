@@ -75,9 +75,9 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({
 
   return (
     <div className="fixed inset-0 bg-slate-950/70 backdrop-blur-xs z-50 flex items-center justify-center p-4">
-      <div className="w-full max-w-md bg-white dark:bg-slate-900 border border-gray-200 dark:border-slate-800 rounded-3xl shadow-xl overflow-hidden animate-in fade-in zoom-in-95 duration-200">
-        {/* Modal Header */}
-        <div className="p-4 border-b border-gray-100 dark:border-slate-800 flex items-center justify-between bg-gray-50 dark:bg-slate-950/50">
+      <div className="w-full max-w-md max-h-[90vh] flex flex-col bg-white dark:bg-slate-900 border border-gray-200 dark:border-slate-800 rounded-3xl shadow-xl overflow-hidden animate-in fade-in zoom-in-95 duration-200">
+        {/* Modal Header — stays fixed while the form below scrolls */}
+        <div className="p-4 border-b border-gray-100 dark:border-slate-800 flex items-center justify-between bg-gray-50 dark:bg-slate-950/50 shrink-0">
           <div className="flex items-center space-x-2">
             <UserCheck className="w-5 h-5 text-blue-600 dark:text-blue-400" />
             <h2 className="font-bold text-base text-gray-900 dark:text-slate-100">User Profile</h2>
@@ -85,13 +85,14 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({
           <button
             onClick={onClose}
             className="p-1.5 rounded-xl text-gray-400 hover:text-gray-600 dark:hover:text-slate-200 hover:bg-gray-200 dark:hover:bg-slate-800 transition-colors"
+            title="Close"
           >
             <X className="w-5 h-5" />
           </button>
         </div>
 
-        {/* Profile Form */}
-        <form onSubmit={handleSave} className="p-6 space-y-5">
+        {/* Profile Form — scrollable body */}
+        <form onSubmit={handleSave} className="p-6 space-y-5 overflow-y-auto flex-1">
           {/* Avatar Section */}
           <div className="flex flex-col items-center justify-center space-y-3">
             <div className="relative group">

@@ -777,10 +777,24 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
 
         {/* Scrollable Message List Canvas */}
         <div className="flex-1 overflow-y-auto p-3 sm:p-4 space-y-1.5 relative z-10">
+          {messages.length === 0 ? (
+            <div className="h-full flex flex-col items-center justify-center text-center px-6 relative z-10">
+              <div className="w-14 h-14 rounded-2xl bg-slate-900/80 border border-slate-800 flex items-center justify-center mb-3">
+                <Lock className="w-6 h-6 text-cyan-400" />
+              </div>
+              <h3 className="text-sm font-semibold text-slate-200 mb-1">No messages yet</h3>
+              <p className="text-xs text-slate-500 max-w-[220px]">
+                {chat.type === 'group'
+                  ? `Say hello to start the conversation in "${chat.name}".`
+                  : `Send a message to start an encrypted conversation with ${chat.name}.`}
+              </p>
+            </div>
+          ) : (
+          <>
           {/* Date Capsule Badge matching Telegram style */}
           <div className="text-center my-1 relative z-10">
             <span className="inline-block px-3.5 py-1 rounded-full bg-slate-900/80 text-slate-200 font-medium text-[11px] border border-slate-700/50 shadow-md backdrop-blur-md">
-              August 4
+              {new Date().toLocaleDateString(undefined, { month: 'long', day: 'numeric' })}
             </span>
           </div>
 
@@ -1124,6 +1138,8 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
               );
             })}
         </AnimatePresence>
+          </>
+          )}
         <div ref={messagesEndRef} />
       </div>
     </div>

@@ -39,6 +39,8 @@ function mapDbUserToUser(row: any): User {
     bio: row.bio ?? undefined,
     createdAt: row.created_at,
     publicKeyFingerprint: row.public_key_fingerprint,
+    privateNumberDisplay: row.private_number_display ?? undefined,
+    countryCode: row.country_code ?? undefined,
   };
 }
 

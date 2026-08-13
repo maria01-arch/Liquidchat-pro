@@ -35,12 +35,17 @@ function mapDbUserToUser(row: any): User {
   };
 }
 
-function mapDbChatToChat(row: any, members: User[]): Chat {
+function mapDbChatToChat(row: any, members: User[], myUserId?: string): Chat {
+  // Direct chats have no meaningful name/avatar of their own — display the
+  // OTHER person's identity instead (same convention every DM-based app
+  // uses). Without this, a freshly created or freshly fetched direct chat
+  // renders with a blank title and blank avatar everywhere.
+  const peer = row.type === 'direct' && myUserId ? members.find((m) => m.id !== myUserId) : undefined;
   return {
     id: row.id,
-    name: row.name ?? (row.type === 'direct' ? '' : 'Group'),
+    name: peer ? peer.username : row.name ?? (row.type === 'direct' ? '' : 'Group'),
     type: row.type,
-    avatar: row.avatar_url ?? '',
+    avatar: peer ? peer.avatar : row.avatar_url ?? '',
     unreadCount: 0,
     selfDestructTimer: row.self_destruct_timer ?? 0,
     e2eFingerprint: row.e2e_fingerprint,
@@ -81,7 +86,7 @@ export async function fetchMyChats(myUserId: string): Promise<Chat[]> {
     membersByChatId.set(row.chat_id, list);
   }
 
-  return memberRows.map((r: any) => mapDbChatToChat(r.chats, membersByChatId.get(r.chat_id) ?? []));
+  return memberRows.map((r: any) => mapDbChatToChat(r.chats, membersByChatId.get(r.chat_id) ?? [], myUserId));
 }
 
 /**
@@ -245,7 +250,7 @@ export async function createGroupChat(
   const { data: memberRows } = await supabase.from('users').select('*').in('id', allMemberIds);
   const members = (memberRows ?? []).map(mapDbUserToUser);
 
-  return mapDbChatToChat(chatRow, members);
+  return mapDbChatToChat(chatRow, members, myUserId);
 }
 
 /**
@@ -329,7 +334,7 @@ export async function findOrCreateDirectChat(myUserId: string, peer: User, myIde
 
   if (shared.length > 0) {
     const { data: chatRow } = await supabase.from('chats').select('*').eq('id', shared[0]).eq('type', 'direct').maybeSingle();
-    if (chatRow) return mapDbChatToChat(chatRow, [peer]);
+    if (chatRow) return mapDbChatToChat(chatRow, [peer], myUserId);
   }
 
   const fingerprint = generateSessionFingerprint(myIdentity.encryptionPublicKey, peer.encryptionPublicKey);
@@ -349,5 +354,5 @@ export async function findOrCreateDirectChat(myUserId: string, peer: User, myIde
     ]);
   if (memberErr) throw memberErr;
 
-  return mapDbChatToChat(newChat, [peer]);
+  return mapDbChatToChat(newChat, [peer], myUserId);
 }

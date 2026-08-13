@@ -34,7 +34,10 @@ export const NewGroupModal: React.FC<NewGroupModalProps> = ({
     e.preventDefault();
     if (!name.trim()) return;
     onCreateGroup(name.trim(), topic.trim(), selectedUserIds, timerSeconds);
-    onClose();
+    // Note: onClose() is intentionally NOT called here. When a real backend
+    // is involved, creation is async — closing immediately would hide any
+    // failure (you'd just land back on an unchanged screen with no idea
+    // why). The parent closes this modal once creation actually succeeds.
   };
 
   return (

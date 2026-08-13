@@ -751,6 +751,7 @@ export default function App() {
           setChats((prev) => [liveGroup, ...prev]);
           setActiveTab('chats');
           setActiveChatId(liveGroup.id);
+          setShowNewGroupModal(false);
         })
         .catch((err) => {
           console.error('[Pigion] Failed to create group:', err);
@@ -799,6 +800,7 @@ export default function App() {
 
     setActiveTab('chats');
     setActiveChatId(newChatId);
+    setShowNewGroupModal(false);
   };
 
   // Start direct chat with user from directory
