@@ -33,6 +33,7 @@ import {
   ExternalLink
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
+import { Avatar } from './Avatar';
 import { Chat, Message, User, CloudFile, ChatWallpaper } from '../types';
 // NOTE: messages are local-only demo state until the Supabase message
 // pipeline is wired up (see src/utils/crypto.ts for the real E2EE that will
