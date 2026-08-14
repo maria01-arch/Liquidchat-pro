@@ -483,7 +483,14 @@ export default function App() {
     // Direct chats are genuinely E2E encrypted; group chats pass through as
     // plaintext for now (see chatService.ts module note — real multi-party
     // E2EE for groups is a separate follow-up).
-    if (isLiveSession && identity && chat && (chat.type === 'direct' || chat.type === 'group') && !attachment) {
+    //
+    // NOTE: checking `type === 'text'` here, not `!attachment` — ChatWindow
+    // always passes a 4th argument object for reply-context (even when not
+    // replying, it's `{ replyTo: undefined }`, which is still truthy), so
+    // `!attachment` was never true for a normal message and this branch was
+    // silently never running — every message was falling through to the
+    // local-only demo path below and never actually reaching Supabase.
+    if (isLiveSession && identity && chat && (chat.type === 'direct' || chat.type === 'group') && type === 'text') {
       const optimisticId = `pending_${Date.now()}`;
       const optimisticMsg: Message = {
         id: optimisticId,
@@ -498,19 +505,28 @@ export default function App() {
         status: 'sent',
         selfDestructTimer: selfDestructSecs,
         expiresAt: selfDestructSecs > 0 ? Date.now() + selfDestructSecs * 1000 : undefined,
+        replyTo: attachment?.replyTo,
       };
       setMessages((prev) => ({ ...prev, [chatId]: [...(prev[chatId] || []), optimisticMsg] }));
       setChats((prev) =>
         prev.map((c) => (c.id === chatId ? { ...c, lastMessage: content, lastMessageTime: 'Just now' } : c))
       );
 
-      sendLiveMessage({ chat, identity, myUserId: currentUser.id, content, type, selfDestructTimer: selfDestructSecs })
+      sendLiveMessage({
+        chat,
+        identity,
+        myUserId: currentUser.id,
+        content,
+        type,
+        selfDestructTimer: selfDestructSecs,
+        replyToId: attachment?.replyTo?.id,
+      })
         .then((saved) => {
           setMessages((prev) => ({
             ...prev,
             [chatId]: (prev[chatId] || []).map((m) =>
               m.id === optimisticId
-                ? { ...saved, senderName: currentUser.username, senderAvatar: currentUser.avatar }
+                ? { ...saved, senderName: currentUser.username, senderAvatar: currentUser.avatar, replyTo: attachment?.replyTo }
                 : m
             ),
           }));

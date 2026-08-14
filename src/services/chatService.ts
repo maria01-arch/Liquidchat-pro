@@ -144,11 +144,12 @@ export interface SendMessageInput {
   content: string;
   type: Message['type'];
   selfDestructTimer: number;
+  replyToId?: string;
 }
 
 /** Encrypt (for direct chats) and persist a new message; returns it decrypted for local display. */
 export async function sendMessage(input: SendMessageInput): Promise<Message> {
-  const { chat, identity, myUserId, content, type, selfDestructTimer } = input;
+  const { chat, identity, myUserId, content, type, selfDestructTimer, replyToId } = input;
   const peer = chat.type === 'direct' ? getDirectChatPeer(chat, myUserId) : undefined;
 
   let ciphertext = content;
@@ -170,6 +171,7 @@ export async function sendMessage(input: SendMessageInput): Promise<Message> {
       type,
       self_destruct_timer: selfDestructTimer,
       expires_at: expiresAt,
+      reply_to_id: replyToId ?? null,
     })
     .select()
     .single();
