@@ -377,7 +377,7 @@ export default function App() {
   useEffect(() => {
     if (!isLiveSession || !identity) return;
     let cancelled = false;
-    fetchMyChats(currentUser.id)
+    fetchMyChats(currentUser.id, identity)
       .then((liveChats) => {
         if (!cancelled) setChats(liveChats);
       })

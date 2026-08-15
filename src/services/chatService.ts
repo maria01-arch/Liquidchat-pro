@@ -62,7 +62,7 @@ export function getDirectChatPeer(chat: Chat, myUserId: string): User | undefine
 }
 
 /** Fetch every chat the current user belongs to, with member lists resolved. */
-export async function fetchMyChats(myUserId: string): Promise<Chat[]> {
+export async function fetchMyChats(myUserId: string, identity: PigionIdentity): Promise<Chat[]> {
   const { data: memberRows, error: memberErr } = await supabase
     .from('chat_members')
     .select('chat_id, chats(*)')
@@ -86,7 +86,49 @@ export async function fetchMyChats(myUserId: string): Promise<Chat[]> {
     membersByChatId.set(row.chat_id, list);
   }
 
-  return memberRows.map((r: any) => mapDbChatToChat(r.chats, membersByChatId.get(r.chat_id) ?? [], myUserId));
+  const chats = memberRows.map((r: any) => mapDbChatToChat(r.chats, membersByChatId.get(r.chat_id) ?? [], myUserId));
+
+  // Fetch each chat's most recent message for the list preview (otherwise
+  // every chat looks permanently empty on reload, even with real history).
+  const { data: recentMessages } = await supabase
+    .from('messages')
+    .select('*')
+    .in('chat_id', chatIds)
+    .order('created_at', { ascending: false })
+    .limit(500);
+
+  const latestByChatId = new Map<string, any>();
+  for (const row of recentMessages ?? []) {
+    if (!latestByChatId.has(row.chat_id)) latestByChatId.set(row.chat_id, row); // first hit per chat = most recent
+  }
+
+  for (const chat of chats) {
+    const latest = latestByChatId.get(chat.id);
+    if (!latest) continue;
+
+    let previewText: string;
+    if (latest.type !== 'text') {
+      previewText = { voice: '🎤 Voice message', image: '📷 Photo', file: '📎 File' }[latest.type as string] ?? 'New message';
+    } else if (chat.type !== 'direct') {
+      previewText = latest.ciphertext; // groups aren't E2EE yet — stored as plaintext
+    } else {
+      const peer = getDirectChatPeer(chat, myUserId);
+      if (peer && isE2EEEncrypted(latest.ciphertext)) {
+        try {
+          const sharedKey = await deriveSharedKey(identity.encryptionSecretKey, peer.encryptionPublicKey);
+          previewText = await decryptE2EEMessage(latest.ciphertext, sharedKey);
+        } catch {
+          previewText = '🔒 Encrypted message';
+        }
+      } else {
+        previewText = latest.ciphertext;
+      }
+    }
+    chat.lastMessage = previewText;
+    chat.lastMessageTime = new Date(latest.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  }
+
+  return chats;
 }
 
 /**

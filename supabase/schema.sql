@@ -64,19 +64,10 @@ create policy "Users manage their own contact list"
   using (owner_id = auth.uid())
   with check (owner_id = auth.uid());
 
--- Users SELECT policy lives here (after contacts + chat_members exist, since
--- it references both tables).
-create policy "Users can view themselves, contacts, and chat co-members"
-  on public.users for select
-  using (
-    id = auth.uid()
-    or exists (select 1 from public.contacts c where c.owner_id = auth.uid() and c.contact_user_id = users.id)
-    or exists (
-      select 1 from public.chat_members my
-      join public.chat_members their on their.chat_id = my.chat_id
-      where my.user_id = auth.uid() and their.user_id = users.id
-    )
-  );
+-- Users SELECT policy is defined further down (search for
+-- "Users can view themselves, contacts, and chat co-members") — it needs
+-- public.chat_members to exist first, which isn't created until later in
+-- this file, so it's placed right after that table + its policies.
 
 -- ---------------------------------------------------------------------------
 -- PRIVATE NUMBER LOOKUP
@@ -138,14 +129,51 @@ create policy "Users can create chats they own"
   with check (created_by = auth.uid());
 
 drop policy if exists "Members can view their membership rows" on public.chat_members;
-create policy "Members can view their membership rows"
+create policy "Members can view membership rows in their own chats"
   on public.chat_members for select
-  using (user_id = auth.uid());
+  using (
+    exists (
+      select 1 from public.chat_members my
+      where my.chat_id = chat_members.chat_id and my.user_id = auth.uid()
+    )
+  );
 
 drop policy if exists "Chat creator can add members" on public.chat_members;
 create policy "Chat creator can add members"
   on public.chat_members for insert
   with check (exists (select 1 from public.chats c where c.id = chat_members.chat_id and c.created_by = auth.uid()));
+
+-- Now that chat_members exists, define the deferred users SELECT policy
+-- (see note near the CONTACTS section above for why it's placed here).
+--
+-- SECURITY DEFINER matters here: it makes this function run with the
+-- function owner's privileges, bypassing chat_members' own RLS while it
+-- runs. Without that, a plain subquery against chat_members would have
+-- chat_members' own "only rows about you" rule re-applied INSIDE this
+-- check, silently collapsing "anyone who shares a chat with me" down to
+-- just "me" — which was the actual bug (blank names/avatars and
+-- undecryptable messages after a refresh, since the other person's public
+-- key became invisible to re-fetch queries).
+create or replace function public.shares_chat_with(other_user_id uuid)
+returns boolean
+language sql security definer set search_path = public
+as $$
+  select exists (
+    select 1 from public.chat_members my
+    join public.chat_members their on their.chat_id = my.chat_id
+    where my.user_id = auth.uid() and their.user_id = other_user_id
+  );
+$$;
+grant execute on function public.shares_chat_with(uuid) to authenticated;
+
+drop policy if exists "Users can view themselves, contacts, and chat co-members" on public.users;
+create policy "Users can view themselves, contacts, and chat co-members"
+  on public.users for select
+  using (
+    id = auth.uid()
+    or exists (select 1 from public.contacts c where c.owner_id = auth.uid() and c.contact_user_id = users.id)
+    or public.shares_chat_with(users.id)
+  );
 
 -- ---------------------------------------------------------------------------
 -- MESSAGES
