@@ -34,7 +34,17 @@ export const AuthModal: React.FC<AuthModalProps> = ({ onLoginOrCreate, onClose, 
       setPendingUser(user);
       setPendingIdentity(identity);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Could not create your account. Please try again.');
+      // Supabase/PostgREST errors are plain objects (not real Error
+      // instances), so `err instanceof Error` misses them — check for a
+      // .message property on anything, or the real error gets hidden
+      // behind a generic message.
+      const msg =
+        err instanceof Error
+          ? err.message
+          : typeof err === 'object' && err !== null && 'message' in err && typeof (err as any).message === 'string'
+          ? (err as any).message
+          : 'Could not create your account. Please try again.';
+      setError(msg);
     } finally {
       setLoading(false);
     }

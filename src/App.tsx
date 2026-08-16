@@ -32,6 +32,24 @@ import type { CountryOption } from './utils/privateNumber';
 import { useRealtimeMessages } from './hooks/useRealtimeMessages';
 import type { PigionIdentity } from './utils/wallet';
 
+/**
+ * Extracts a human-readable message from any error shape. This matters
+ * because Supabase/PostgREST errors are plain objects with a `.message`
+ * property — NOT real JavaScript `Error` instances — so `err instanceof
+ * Error` is always false for them. Every catch block that used that check
+ * was silently discarding the actual database error and showing a generic
+ * "please try again" instead, which made real bugs undiagnosable from the
+ * UI. This checks for a `.message` property on anything, not just Errors.
+ */
+function getErrorMessage(err: unknown, fallback: string): string {
+  if (err instanceof Error) return err.message;
+  if (typeof err === 'object' && err !== null && 'message' in err) {
+    const msg = (err as { message: unknown }).message;
+    if (typeof msg === 'string' && msg.trim()) return msg;
+  }
+  return fallback;
+}
+
 export default function App() {
   const [currentUser, setCurrentUser] = useState<User>(CURRENT_USER);
   const [identity, setIdentity] = useState<PigionIdentity | null>(null);
@@ -354,7 +372,7 @@ export default function App() {
     setPrivateNumberError(null);
     claimPrivateNumber(currentUser.id, country)
       .then((updatedUser) => setCurrentUser(updatedUser))
-      .catch((err) => setPrivateNumberError(err instanceof Error ? err.message : 'Failed to claim a private number.'));
+      .catch((err) => setPrivateNumberError(getErrorMessage(err, 'Failed to claim a private number.')));
   };
 
   const handleAddContact = (user: User) => {
@@ -362,7 +380,7 @@ export default function App() {
     if (isLiveSession) {
       addContact(currentUser.id, user.id).catch((err) => {
         console.error('[Pigion] Failed to save contact:', err);
-        showErrorToast('Could not save that contact — ' + (err instanceof Error ? err.message : 'please try again.'));
+        showErrorToast('Could not save that contact — ' + getErrorMessage(err, 'please try again.'));
       });
     }
   };
@@ -533,7 +551,7 @@ export default function App() {
         })
         .catch((err) => {
           console.error('[Pigion] Failed to send message:', err);
-          showErrorToast('Message failed to send — ' + (err instanceof Error ? err.message : 'please try again.'));
+          showErrorToast('Message failed to send — ' + getErrorMessage(err, 'please try again.'));
           setMessages((prev) => ({
             ...prev,
             [chatId]: (prev[chatId] || []).map((m) => (m.id === optimisticId ? { ...m, status: 'sent' } : m)),
@@ -771,7 +789,7 @@ export default function App() {
         })
         .catch((err) => {
           console.error('[Pigion] Failed to create group:', err);
-          showErrorToast('Could not create the group — ' + (err instanceof Error ? err.message : 'please try again.'));
+          showErrorToast('Could not create the group — ' + getErrorMessage(err, 'please try again.'));
         });
       return;
     }
@@ -837,7 +855,7 @@ export default function App() {
         })
         .catch((err) => {
           console.error('[Pigion] Failed to start chat:', err);
-          showErrorToast('Could not open that chat — ' + (err instanceof Error ? err.message : 'please try again.'));
+          showErrorToast('Could not open that chat — ' + getErrorMessage(err, 'please try again.'));
         });
       return;
     }
